@@ -1,30 +1,36 @@
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Retailer');
+export const config = { runtime: 'edge' };
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
+export default async function handler(req) {
+  const url = new URL(req.url);
+  const target = url.searchParams.get('url');
+  
+  const headers = new Headers();
+  headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type,Authorization,Retailer');
 
-  const target = req.query.url;
-  if (!target) return res.status(400).json({ error: 'Missing url param' });
-
-  try {
-    const headers = { 'Content-Type': req.headers['content-type'] || 'application/json' };
-    if (req.headers['authorization']) headers['Authorization'] = req.headers['authorization'];
-    if (req.headers['retailer']) headers['Retailer'] = req.headers['retailer'];
-
-    const fetchOptions = { method: req.method, headers };
-    if (req.method !== 'GET' && req.body) {
-      fetchOptions.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    }
-
-    const response = await fetch(target, fetchOptions);
-    const data = await response.text();
-
-    res.status(response.status);
-    try { res.json(JSON.parse(data)); }
-    catch { res.send(data); }
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers });
   }
+
+  if (!target) {
+    return new Response(JSON.stringify({ error: 'Missing url' }), { status: 400, headers });
+  }
+
+  const fwdHeaders = new Headers();
+  fwdHeaders.set('Content-Type', req.headers.get('content-type') || 'application/json');
+  if (req.headers.get('authorization')) fwdHeaders.set('Authorization', req.headers.get('authorization'));
+  if (req.headers.get('retailer')) fwdHeaders.set('Retailer', req.headers.get('retailer'));
+
+  const fetchOpts = { method: req.method, headers: fwdHeaders };
+  if (req.method !== 'GET') {
+    const body = await req.text();
+    if (body) fetchOpts.body = body;
+  }
+
+  const resp = await fetch(target, fetchOpts);
+  const data = await resp.text();
+
+  headers.set('Content-Type', 'application/json');
+  return new Response(data, { status: resp.status, headers });
 }
