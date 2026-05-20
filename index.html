@@ -225,7 +225,10 @@ input:focus{border-color:var(--blue)}
 
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div style="font-size:13px;font-weight:700">Đã duyệt: <span id="approvedCount" style="color:var(--green)">0</span>/<span id="totalPending">0</span></div>
-    <button class="btn-sm btn-green" id="btnContinue" onclick="goToPreview()" style="display:none">✅ Tiếp tục →</button>
+    <div style="display:flex;gap:6px">
+      <button class="btn-sm btn-gray" onclick="skipAll()">Bỏ qua tất cả</button>
+      <button class="btn-sm btn-green" id="btnContinue" onclick="goToPreview()">✅ Tiếp tục →</button>
+    </div>
   </div>
   <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
 
@@ -524,13 +527,26 @@ function process() {
 }
 
 // ===== APPROVAL UI =====
+function skipItem(pi) {
+  pendingItems[pi].src = 'approved'; // mark as done without linking
+  pendingItems[pi].confirmed = false; // don't update KiotViet
+  renderApproval();
+}
+
+function skipAll() {
+  pendingItems.forEach(function(r) {
+    if (r.src !== 'approved') { r.src = 'approved'; r.confirmed = false; }
+  });
+  renderApproval();
+}
+
 function renderApproval() {
   var done = pendingItems.filter(function(r){return r.src==='approved';}).length;
   var total = pendingItems.length;
   document.getElementById('approvedCount').textContent = done;
   document.getElementById('totalPending').textContent = total;
   document.getElementById('progressBar').style.width = (total>0?(done/total*100):0)+'%';
-  document.getElementById('btnContinue').style.display = (done===total)?'block':'none';
+  // Continue button always visible
 
   var html = '';
   pendingItems.forEach(function(r, pi) {
