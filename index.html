@@ -1335,34 +1335,10 @@ function doUpdate() {
         return resp1.text().then(function(txt1) {
           var sellOk = resp1.ok;
 
-          // Step 2: Update giá vốn bằng tạo phiếu nhập hàng (Purchase Order)
-          if (r.newCost && bid) {
-            var poBody = {
-              branchId: bid,
-              purchaseOrderDetails: [{
-                productId: pid,
-                quantity: 0,
-                price: r.newCost
-              }],
-              description: 'Cap nhat gia von tu app - ' + name.substring(0,50)
-            };
-            return px('https://public.kiotapi.com/purchaseOrders', {
-              method:'POST',
-              headers:Object.assign({'Content-Type':'application/json'}, kvHeaders()),
-              body:JSON.stringify(poBody)
-            }).then(function(resp2) {
-              return resp2.text().then(function(txt2) {
-                var costOk = resp2.ok;
-                var info = 'Giá bán '+(sellOk?'✅':'❌')+' '+r.newSell.toLocaleString('vi-VN')+'đ | Giá vốn '+(costOk?'✅':'❌')+' '+r.newCost.toLocaleString('vi-VN')+'đ';
-                if (!costOk) info += ' ('+txt2.substring(0,80)+')';
-                logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:info});
-              });
-            }).catch(function(e){ logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:'Giá bán '+(sellOk?'✅':'❌')+' | Giá vốn ❌ '+e.message}); });
-          } else {
-            var info = 'Giá bán '+(sellOk?'✅':'❌')+' '+r.newSell.toLocaleString('vi-VN')+'đ | Giá vốn ⚠️ thiếu branchId';
-            if (!sellOk) info += ' ('+txt1.substring(0,60)+')';
-            logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:info});
-          }
+          // Giá vốn không thể cập nhật qua API — hiện link sửa tay
+          var info = 'Giá bán '+(sellOk?'✅':'❌')+' '+r.newSell.toLocaleString('vi-VN')+'đ';
+          if (!sellOk) info += ' ('+txt1.substring(0,60)+')';
+          logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:info});
         });
       }).catch(function(e) {
         logs.push({ok:false, name:name, msg:'Lỗi kết nối: '+e.message});
@@ -1379,16 +1355,51 @@ function doUpdate() {
     var html = '';
     if (okList.length>0) {
       html += '<div style="color:var(--green);margin-bottom:8px;font-weight:700">✅ Cập nhật thành công '+okList.length+' sản phẩm:</div>';
-      okList.forEach(function(l){
-        html += '<div style="background:#f9fff9;border:1px solid #b7dfbf;border-radius:8px;padding:10px;margin-bottom:8px">'
-          + '<div style="font-weight:700;margin-bottom:4px">'+l.name+'</div>'
-          + '<div style="font-size:12px;color:#555;margin-bottom:6px">'+(l.info||'')+'</div>'
-          + (l.cost ? '<div style="display:flex;align-items:center;gap:8px;background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:8px;font-size:12px">'
-            + '<div style="flex:1"><b>📝 Sửa giá vốn:</b> nhập <b style="color:var(--blue);font-size:14px">'+l.cost.toLocaleString('vi-VN')+'</b>đ</div>'
-            + '<a href="https://'+C.ret+'.kiotviet.vn/ProductDetail/'+l.pid+'" target="_blank" style="padding:6px 12px;background:var(--blue);color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:12px;white-space:nowrap">Mở KiotViet →</a>'
-            + '</div>' : '')
+      // Show summary table header
+      if (okList.length > 0) {
+        html += '<div style="background:#f0f4ff;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:12px">'
+          + '<div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:8px">📋 Danh sách cần sửa giá vốn trong KiotViet:</div>';
+      }
+      okList.forEach(function(l, idx){
+        // Find the original result to get old prices
+        var orig = allResults.find(function(r){return (r.prod.kiotvietId||r.prod.id)===l.pid;});
+        var oldCost = orig ? orig.oldCost : 0;
+        var oldSell = orig ? orig.oldSell : 0;
+        var barcode = orig ? (orig.prod.kiotvietCode||orig.prod.barCode||'') : '';
+
+        html += '<div style="background:#fff;border:1px solid #e3ecff;border-radius:8px;padding:10px;margin-bottom:8px">'
+          // Product name + unit
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
+            + '<div style="font-weight:700;font-size:13px;flex:1">'+(idx+1)+'. '+l.name+'</div>'
+            + (barcode?'<span style="background:#f0f4ff;color:var(--blue);padding:1px 6px;border-radius:4px;font-family:monospace;font-size:10px">'+barcode+'</span>':'')
+          + '</div>'
+
+          // Giá bán row
+          + '<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:4px;padding:4px 8px;background:#e6f4ea;border-radius:5px">'
+            + '<span style="min-width:60px;font-weight:700;color:var(--green)">Giá bán</span>'
+            + '<span style="color:#999;text-decoration:line-through">'+(oldSell?oldSell.toLocaleString('vi-VN')+'đ':'—')+'</span>'
+            + '<span>→</span>'
+            + '<span style="font-weight:700;color:var(--green)">'+l.sell.toLocaleString('vi-VN')+'đ ✅</span>'
+          + '</div>'
+
+          // Giá vốn row
+          + (l.cost ? '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 8px;background:#fff3e0;border-radius:5px;margin-bottom:6px">'
+            + '<span style="min-width:60px;font-weight:700;color:var(--orange)">Giá vốn</span>'
+            + '<span style="color:#999;text-decoration:line-through">'+(oldCost?oldCost.toLocaleString('vi-VN')+'đ':'—')+'</span>'
+            + '<span>→</span>'
+            + '<span style="font-weight:700;color:var(--orange)">'+l.cost.toLocaleString('vi-VN')+'đ 📝</span>'
+          + '</div>' : '')
+
+          // Action buttons
+          + (l.cost ? '<div style="display:flex;gap:6px;align-items:center">'
+            + '<button onclick="navigator.clipboard.writeText(\''+l.cost+'\');this.textContent=\'✅ Đã copy\'" style="padding:5px 10px;background:#f0f4ff;color:var(--blue);border:1px solid #c5d7ff;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">📋 Copy '+l.cost.toLocaleString('vi-VN')+'</button>'
+            + '<a href="https://'+C.ret+'.kiotviet.vn/ProductDetail/'+l.pid+'" target="_blank" style="padding:5px 10px;background:var(--blue);color:#fff;border-radius:5px;text-decoration:none;font-size:11px;font-weight:700">Mở KiotViet →</a>'
+          + '</div>' : '')
           + '</div>';
       });
+      if (okList.length > 0) {
+        html += '</div>';
+      }
     }
     if (failList.length>0) {
       html += '<div style="color:var(--red);margin-top:10px;margin-bottom:6px;font-weight:700">❌ Thất bại '+failList.length+' sản phẩm:</div>';
