@@ -1335,23 +1335,31 @@ function doUpdate() {
         return resp1.text().then(function(txt1) {
           var sellOk = resp1.ok;
 
-          // Step 2: Update giá vốn separately if needed
+          // Step 2: Update giá vốn bằng tạo phiếu nhập hàng (Purchase Order)
           if (r.newCost && bid) {
-            var body2 = { inventories:[{branchId:bid, cost:r.newCost}] };
-            return px('https://public.kiotapi.com/products/'+pid, {
-              method:'PUT',
+            var poBody = {
+              branchId: bid,
+              purchaseOrderDetails: [{
+                productId: pid,
+                quantity: 0,
+                price: r.newCost
+              }],
+              description: 'Cap nhat gia von tu app - ' + name.substring(0,50)
+            };
+            return px('https://public.kiotapi.com/purchaseOrders', {
+              method:'POST',
               headers:Object.assign({'Content-Type':'application/json'}, kvHeaders()),
-              body:JSON.stringify(body2)
+              body:JSON.stringify(poBody)
             }).then(function(resp2) {
               return resp2.text().then(function(txt2) {
                 var costOk = resp2.ok;
                 var info = 'Giá bán '+(sellOk?'✅':'❌')+' '+r.newSell.toLocaleString('vi-VN')+'đ | Giá vốn '+(costOk?'✅':'❌')+' '+r.newCost.toLocaleString('vi-VN')+'đ';
-                if (!costOk) info += ' ('+txt2.substring(0,60)+')';
+                if (!costOk) info += ' ('+txt2.substring(0,80)+')';
                 logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:info});
               });
-            }).catch(function(){ logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:'Giá bán '+(sellOk?'✅':'❌')+' | Giá vốn ❌ lỗi kết nối'}); });
+            }).catch(function(e){ logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:'Giá bán '+(sellOk?'✅':'❌')+' | Giá vốn ❌ '+e.message}); });
           } else {
-            var info = 'Giá bán '+(sellOk?'✅':'❌')+' '+r.newSell.toLocaleString('vi-VN')+'đ | Giá vốn ⚠️ không gửi (thiếu branchId)';
+            var info = 'Giá bán '+(sellOk?'✅':'❌')+' '+r.newSell.toLocaleString('vi-VN')+'đ | Giá vốn ⚠️ thiếu branchId';
             if (!sellOk) info += ' ('+txt1.substring(0,60)+')';
             logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:info});
           }
