@@ -4,7 +4,260 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cập nhật giá NCC → KiotViet</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+// ===== CREATE PRODUCT FUNCTIONS =====
+var createItems = []; // items to create
+
+function goCreateSingle(idx) {
+  createItems = [allResults[idx]];
+  renderCreateScreen();
+  go('create');
+}
+
+function goCreateAll() {
+  createItems = allResults.filter(function(r){return r.src==='unverified';});
+  renderCreateScreen();
+  go('create');
+}
+
+function renderCreateScreen() {
+  var html = '';
+  createItems.forEach(function(r, ci) {
+    var name = r.prod.kiotvietName || r.inv.name || '';
+    var barcode = r.prod.kiotvietCode || '';
+    var cat = r.prod.kiotvietCategory || '';
+    var cost = r.inv.unit_price;
+    var sell = calcSell(cost, name, cat, 0);
+
+    // Get categories for dropdown
+    var catOptions = '<option value="">-- Chọn nhóm hàng --</option>';
+    (C.categories||[]).forEach(function(ct){
+      var catName = ct.name||'';
+      catOptions += '<option value="'+(ct.categoryId||ct.id||'')+'" '+(cat&&catName.toLowerCase().includes(cat.toLowerCase().split('>>').pop().trim())?'selected':'')+'>'+catName+'</option>';
+    });
+
+    html += '<div class="card" style="border-color:#b7dfbf;background:#f9fff9;margin-bottom:14px" id="ccard'+ci+'">'
+      + '<div style="font-size:12px;font-weight:800;color:var(--blue);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #e3ecff">📦 Sản phẩm '+(ci+1)+'/'+createItems.length+'</div>'
+
+      // Image section
+      + '<div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">'
+        + '<div id="imgPreview'+ci+'" style="width:80px;height:80px;border:2px dashed #dde5ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;overflow:hidden;background:#f8f9fa">📷</div>'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">TÊN SẢN PHẨM *</div>'
+          + '<input type="text" id="cName'+ci+'" value="'+name.replace(/"/g,"'")+'" style="width:100%;padding:8px 10px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;font-weight:700;outline:none" oninput="autoFetchImg('+ci+')">'
+          + '<div style="display:flex;gap:6px;margin-top:5px">'
+            + '<button onclick="fetchImg('+ci+')" style="padding:4px 8px;background:#e8f0fe;color:var(--blue);border:none;border-radius:5px;font-size:11px;cursor:pointer">🔍 Tìm ảnh</button>'
+            + '<label style="padding:4px 8px;background:#f0f4ff;color:#555;border:none;border-radius:5px;font-size:11px;cursor:pointer">📤 Upload<input type="file" accept="image/*" style="display:none" onchange="uploadImg('+ci+',event)"></label>'
+          + '</div>'
+        + '</div>'
+      + '</div>'
+      + '<input type="hidden" id="cImgUrl'+ci+'" value="">'
+
+      // Barcode + Unit
+      + '<div style="display:flex;gap:8px;margin-bottom:8px">'
+        + '<div style="flex:2">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">MÃ VẠCH</div>'
+          + '<input type="text" id="cBarcode'+ci+'" value="'+barcode+'" style="width:100%;padding:8px 10px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:monospace;outline:none">'
+        + '</div>'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">ĐƠN VỊ CƠ BẢN *</div>'
+          + '<select id="cUnit'+ci+'" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none">'
+            + '<option>Cái</option><option>Chiếc</option><option>Cây</option><option>Chai</option>'
+            + '<option>Gói</option><option>Hộp</option><option>Thùng</option><option>Kg</option>'
+            + '<option>Gram</option><option>Lít</option><option>Túi</option><option>Cuộn</option>'
+          + '</select>'
+        + '</div>'
+      + '</div>'
+
+      // Category
+      + '<div style="margin-bottom:8px">'
+        + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">NHÓM HÀNG</div>'
+        + '<select id="cCat'+ci+'" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none">'+catOptions+'</select>'
+      + '</div>'
+
+      // Prices
+      + '<div style="display:flex;gap:8px;margin-bottom:8px">'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">GIÁ VỐN (đ)</div>'
+          + '<input type="number" id="cCost'+ci+'" value="'+cost+'" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none">'
+        + '</div>'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">GIÁ BÁN LẺ (đ) *</div>'
+          + '<input type="number" id="cSell'+ci+'" value="'+sell+'" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none;font-weight:700;color:var(--blue)">'
+        + '</div>'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">GIÁ SỈ (đ)</div>'
+          + '<input type="number" id="cWhole'+ci+'" placeholder="Tùy chọn" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none">'
+        + '</div>'
+      + '</div>'
+
+      // Extra units
+      + '<div style="margin-bottom:10px">'
+        + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:5px">ĐƠN VỊ QUY ĐỔI (tùy chọn)</div>'
+        + '<div id="extraUnits'+ci+'">'
+          + '<div style="font-size:12px;color:#aaa">Chưa có — nhấn "+" để thêm (VD: Thùng = 30 cây)</div>'
+        + '</div>'
+        + '<button onclick="addExtraUnit('+ci+')" style="margin-top:5px;padding:4px 10px;background:#f0f4ff;color:var(--blue);border:1px solid #c5d7ff;border-radius:5px;font-size:11px;cursor:pointer">+ Thêm đơn vị</button>'
+      + '</div>'
+
+      // Status + Create button
+      + '<div id="cStatus'+ci+'"></div>'
+      + '<button onclick="doCreate('+ci+')" style="width:100%;padding:11px;background:var(--green);color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px">✅ Tạo sản phẩm này</button>'
+      + '</div>';
+  });
+
+  document.getElementById('createList').innerHTML = html;
+  // Auto-fetch images for all items
+  createItems.forEach(function(r, ci) {
+    if (r.prod.kiotvietCode) fetchImg(ci);
+  });
+}
+
+function fetchImg(ci) {
+  var barcode = (document.getElementById('cBarcode'+ci)||{value:''}).value.trim();
+  var name = (document.getElementById('cName'+ci)||{value:''}).value.trim();
+  var imgEl = document.getElementById('imgPreview'+ci);
+  var urlEl = document.getElementById('cImgUrl'+ci);
+  if (!barcode && !name) return;
+
+  // Try Open Food Facts first
+  if (barcode) {
+    fetch('https://world.openfoodfacts.org/api/v0/product/'+barcode+'.json')
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if (d.product && d.product.image_url) {
+          imgEl.innerHTML = '<img src="'+d.product.image_url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';
+          urlEl.value = d.product.image_url;
+        } else {
+          imgEl.innerHTML = '<div style="text-align:center;font-size:10px;color:#aaa;padding:4px">Không tìm thấy<br>ảnh</div>';
+        }
+      })
+      .catch(function(){
+        imgEl.innerHTML = '<div style="text-align:center;font-size:10px;color:#aaa;padding:4px">Không tìm thấy<br>ảnh</div>';
+      });
+  }
+}
+
+function uploadImg(ci, event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var imgEl = document.getElementById('imgPreview'+ci);
+  var urlEl = document.getElementById('cImgUrl'+ci);
+  var url = URL.createObjectURL(file);
+  imgEl.innerHTML = '<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';
+  // Convert to base64 for upload
+  var rd = new FileReader();
+  rd.onload = function(e){ urlEl.value = e.target.result; };
+  rd.readAsDataURL(file);
+}
+
+var extraUnitCount = {};
+function addExtraUnit(ci) {
+  if (!extraUnitCount[ci]) extraUnitCount[ci] = 0;
+  var container = document.getElementById('extraUnits'+ci);
+  var ui = extraUnitCount[ci]++;
+  var units = ['Hộp','Thùng','Lốc','Két','Kg','Lít'];
+  var opts = units.map(function(u){return '<option>'+u+'</option>';}).join('');
+  // Remove placeholder text
+  if (container.querySelector('div') && !container.querySelector('.eu-row')) {
+    container.innerHTML = '';
+  }
+  var row = document.createElement('div');
+  row.className = 'eu-row';
+  row.style.cssText = 'display:flex;gap:6px;margin-bottom:5px;align-items:center';
+  row.innerHTML = '<select id="euName'+ci+'_'+ui+'" style="flex:2;padding:6px;border:1px solid #dde5ff;border-radius:6px;font-size:12px"><option>'+units.join('</option><option>')+'</option></select>'
+    + '<span style="font-size:12px;color:#888">=</span>'
+    + '<input type="number" id="euVal'+ci+'_'+ui+'" placeholder="Số lượng" style="flex:1;padding:6px;border:1px solid #dde5ff;border-radius:6px;font-size:12px">'
+    + '<span id="euBase'+ci+'" style="font-size:12px;color:#888"></span>'
+    + '<input type="number" id="euPrice'+ci+'_'+ui+'" placeholder="Giá" style="flex:2;padding:6px;border:1px solid #dde5ff;border-radius:6px;font-size:12px">'
+    + '<button onclick="this.parentElement.remove()" style="padding:4px 7px;background:#fce8e6;color:var(--red);border:none;border-radius:5px;cursor:pointer;font-size:12px">✕</button>';
+  // Update base unit label
+  var baseUnit = (document.getElementById('cUnit'+ci)||{value:'Cái'}).value;
+  row.querySelector('#euBase'+ci).textContent = baseUnit;
+  container.appendChild(row);
+}
+
+function doCreate(ci) {
+  var r = createItems[ci];
+  var name = (document.getElementById('cName'+ci)||{value:''}).value.trim();
+  var barcode = (document.getElementById('cBarcode'+ci)||{value:''}).value.trim();
+  var catId = (document.getElementById('cCat'+ci)||{value:''}).value;
+  var unit = (document.getElementById('cUnit'+ci)||{value:'Cái'}).value;
+  var cost = parseInt((document.getElementById('cCost'+ci)||{value:'0'}).value)||0;
+  var sell = parseInt((document.getElementById('cSell'+ci)||{value:'0'}).value)||0;
+  var whole = parseInt((document.getElementById('cWhole'+ci)||{value:'0'}).value)||0;
+  var imgUrl = (document.getElementById('cImgUrl'+ci)||{value:''}).value;
+
+  if (!name) { alert('Vui lòng nhập tên sản phẩm!'); return; }
+  if (!sell) { alert('Vui lòng nhập giá bán!'); return; }
+
+  var statusEl = document.getElementById('cStatus'+ci);
+  statusEl.innerHTML = '<div style="font-size:12px;color:#888;margin-bottom:6px">Đang tạo sản phẩm...</div>';
+
+  // Build body
+  var body = { name:name, basePrice:sell, allowsSale:true, unit:unit };
+  if (barcode) body.barCode = barcode;
+  if (catId) body.categoryId = parseInt(catId);
+
+  // Inventories (cost)
+  if (C.defaultBranchId) {
+    body.inventories = [{ branchId:C.defaultBranchId, cost:cost, onHand:0 }];
+  }
+
+  // Extra units
+  var extraUnits = [];
+  var container = document.getElementById('extraUnits'+ci);
+  var rows = container.querySelectorAll('.eu-row');
+  rows.forEach(function(row, ui) {
+    var euName = row.querySelector('[id^="euName"]');
+    var euVal = row.querySelector('[id^="euVal"]');
+    var euPrice = row.querySelector('[id^="euPrice"]');
+    if (euName && euVal && euVal.value) {
+      extraUnits.push({ unitName:euName.value, conversionValue:parseInt(euVal.value)||1, isBaseUnit:false, price:parseInt(euPrice&&euPrice.value)||sell*parseInt(euVal.value||1) });
+    }
+  });
+  if (extraUnits.length > 0) {
+    body.units = [{ unitName:unit, conversionValue:1, isBaseUnit:true, price:sell }].concat(extraUnits);
+  }
+
+  // Image
+  if (imgUrl && imgUrl.startsWith('http')) {
+    body.images = [imgUrl];
+  }
+
+  px('https://public.kiotapi.com/products', {
+    method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, kvHeaders()),
+    body: JSON.stringify(body)
+  }).then(function(resp) {
+    return resp.text().then(function(txt) {
+      if (resp.ok) {
+        var newProd;
+        try { newProd = JSON.parse(txt); } catch(e) { newProd = {id:0}; }
+        // Update result
+        r.src = 'verified';
+        r.confirmed = true;
+        r.prod = Object.assign({}, r.prod, { id:newProd.id, kiotvietId:newProd.id, kiotvietName:name, kiotvietCode:barcode, basePrice:sell });
+        r.oldSell = 0; r.oldCost = cost; r.branchId = C.defaultBranchId;
+        r.newSell = sell; r.newCost = cost;
+        // Save to mapping DB
+        DB.set(r.code, r.inv.name, { id:newProd.id, name:name, barCode:barcode, categoryName:'', basePrice:sell, inventories:[{branchId:C.defaultBranchId,cost:cost}] });
+        statusEl.innerHTML = '<div style="background:#e6f4ea;border:1px solid #b7dfbf;border-radius:8px;padding:8px;font-size:12px;color:var(--green);font-weight:700;margin-bottom:6px">✅ Tạo thành công! SP đã được thêm vào KiotViet.</div>';
+        // Disable create button
+        var btn = statusEl.nextElementSibling;
+        if(btn){btn.disabled=true;btn.style.background='#bbb';btn.textContent='✅ Đã tạo';}
+      } else {
+        statusEl.innerHTML = '<div style="background:#fce8e6;border-radius:8px;padding:8px;font-size:12px;color:var(--red)">❌ Lỗi '+resp.status+': '+txt.substring(0,150)+'</div>';
+      }
+    });
+  }).catch(function(e) {
+    statusEl.innerHTML = '<div style="background:#fce8e6;border-radius:8px;padding:8px;font-size:12px;color:var(--red)">❌ Lỗi kết nối: '+e.message+'</div>';
+  });
+}
+
+function autoFetchImg(ci) { /* triggered on name change - debounced */ }
+
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -256,11 +509,24 @@ input:focus{border-color:var(--blue)}
     <button class="btn btn-secondary" onclick="go('cfg')" style="max-width:260px;margin:6px auto 0">⚙️ Cài đặt</button>
   </div>
 </div>
+
+<!-- ===== CREATE PRODUCTS SCREEN ===== -->
+<div class="screen" id="s-create">
+  <div class="sth">
+    <button class="bk" onclick="go('pre')">←</button>
+    <h2>➕ Tạo sản phẩm mới</h2>
+  </div>
+  <div class="alert alert-warn" style="margin-bottom:12px;font-size:12px">
+    ⚠️ Các sản phẩm dưới đây <b>chưa có trong KiotViet</b>. Kiểm tra thông tin rồi nhấn "✅ Tạo" để thêm.
+  </div>
+  <div id="createList"></div>
+  <div style="height:20px"></div>
+</div>
 </div><!-- .app -->
 
 <script>
 // ===== CONFIG =====
-var C = { token:'', ret:'', cKey:'', px:'https://kiotviet-proxy.vercel.app', imgBase64:'', imgType:'image/jpeg' };
+var C = { token:'', ret:'', cKey:'', px:'https://kiotviet-proxy.vercel.app', imgBase64:'', imgType:'image/jpeg', branches:[], categories:[], defaultBranchId:null };
 var allResults = [];    // all items from invoice
 var pendingItems = [];  // items needing approval
 var srchCache = {};     // temp search results
@@ -379,6 +645,16 @@ function connect() {
     document.getElementById('retBadge').textContent = ret;
     DB.load(); DB._refresh();
     try { localStorage.setItem('kvcfg', JSON.stringify({id,sec,ret,ck,ppx})); } catch(e) {}
+    // Fetch branches for product creation
+    px('https://public.kiotapi.com/branches', {headers:kvHeaders()})
+      .then(function(r){return r.ok?r.json():{data:[]};})
+      .then(function(d){ C.branches = d.data||[]; C.defaultBranchId = C.branches.length>0?C.branches[0].id:null; })
+      .catch(function(){C.branches=[];C.defaultBranchId=null;});
+    // Fetch categories
+    px('https://public.kiotapi.com/categories', {headers:kvHeaders()})
+      .then(function(r){return r.ok?r.json():{data:[]};})
+      .then(function(d){ C.categories = d.data||[]; })
+      .catch(function(){C.categories=[];});
     ul(); go('menu');
   }).catch(function(e) {
     ul();
@@ -480,30 +756,59 @@ function process() {
       var code = String(item.code||'').trim();
       var mapped = code ? DB.get(code) : null;
       if (mapped) {
+        // Start as unverified - must confirm with KiotViet live data
         var res = {
-          idx:idx, inv:item, code:code, prod:mapped, src:'mapped',
-          newCost:item.unit_price,
-          newSell:calcSell(item.unit_price,mapped.kiotvietName,mapped.kiotvietCategory,0),
-          oldSell:0, oldCost:0, branchId:null, confirmed:true
+          idx:idx, inv:item, code:code, prod:mapped, src:'unverified',
+          newCost:item.unit_price, newSell:0,
+          oldSell:0, oldCost:0, branchId:null, confirmed:false
         };
         allResults.push(res);
-        // Fetch live data: try barcode, then ID, then name
+
+        // Try to verify product actually exists in KiotViet
         var livePromise;
         if (mapped.kiotvietCode) {
           livePromise = kByCode(mapped.kiotvietCode);
         } else if (mapped.kiotvietId && mapped.kiotvietId !== 0) {
-          livePromise = kByCode(String(mapped.kiotvietId));
-        } else if (mapped.kiotvietName) {
-          livePromise = kByName(mapped.kiotvietName, 1).then(function(rs){return rs[0]||null;});
+          livePromise = px('https://public.kiotapi.com/products/'+mapped.kiotvietId+'?includeInventory=true',{headers:kvHeaders()})
+            .then(function(r){return r.ok?r.json():null;})
+            .then(function(d){return (d&&d.id)?d:null;})
+            .catch(function(){return null;});
         } else {
           livePromise = Promise.resolve(null);
         }
+
         return livePromise.then(function(live) {
-          if (live) { res.prod.basePrice=live.basePrice; res.oldSell=live.basePrice; res.oldCost=(live.inventories&&live.inventories[0])?live.inventories[0].cost:0; res.branchId=(live.inventories&&live.inventories[0])?live.inventories[0].branchId:null; res.prod.id=live.id; res.newSell=calcSell(item.unit_price,live.name,live.categoryName,live.basePrice);
-            // Update DB with live barcode
-            if (live.barCode&&!mapped.kiotvietCode) { DB._d[code].kiotvietCode=live.barCode||live.code||''; DB._d[code].kiotvietId=live.id; DB.save(); }
+          if (live && live.id) {
+            // ✅ VERIFIED: product exists in KiotViet
+            res.src = 'verified';
+            res.confirmed = true;
+            res.prod = Object.assign({}, mapped, {
+              id: live.id,
+              kiotvietId: live.id,
+              basePrice: live.basePrice,
+              name: live.name,
+              categoryName: live.categoryName
+            });
+            res.oldSell = live.basePrice || 0;
+            res.oldCost = (live.inventories&&live.inventories[0]) ? live.inventories[0].cost : 0;
+            res.branchId = (live.inventories&&live.inventories[0]) ? live.inventories[0].branchId : null;
+            res.newSell = calcSell(item.unit_price, live.name, live.categoryName, live.basePrice);
+            // Update DB with verified ID
+            if (live.barCode || live.code) {
+              DB._d[code].kiotvietId = live.id;
+              DB._d[code].kiotvietCode = live.barCode || live.code || mapped.kiotvietCode;
+              DB.save();
+            }
+          } else {
+            // ⚠️ NOT VERIFIED: in mapping but not found in KiotViet
+            res.src = 'unverified';
+            res.confirmed = false;
+            res.newSell = calcSell(item.unit_price, mapped.kiotvietName, mapped.kiotvietCategory, 0);
           }
-        }).catch(function(){});
+        }).catch(function(){
+          res.src = 'unverified';
+          res.confirmed = false;
+        });
       } else {
         // Not in mapping → needs approval
         var res = { idx:idx, inv:item, code:code, prod:null, src:'pending', newCost:item.unit_price, newSell:0, oldSell:0, oldCost:0, branchId:null, confirmed:false };
@@ -527,6 +832,10 @@ function process() {
     });
     // Rebuild pending list after dedup
     pendingItems = allResults.filter(function(r){ return r.src==='pending'; });
+    // Verified items don't need approval
+    allResults.forEach(function(r){
+      if(r.src==='verified') r.src='verified'; // keep verified state
+    });
 
     ul();
     if (pendingItems.length > 0) {
@@ -678,22 +987,120 @@ function goToPreview() {
 }
 
 // ===== PREVIEW =====
+// ===== CREATE NEW PRODUCT IN KIOTVIET =====
+function createProduct(i) {
+  var r = allResults[i];
+  var name = (document.getElementById('newName'+i)||{value:''}).value.trim();
+  var barcode = (document.getElementById('newBarcode'+i)||{value:''}).value.trim();
+  var price = parseInt((document.getElementById('newPrice'+i)||{value:'0'}).value)||0;
+  if (!name) { alert('Vui lòng nhập tên sản phẩm!'); return; }
+
+  var statusEl = document.getElementById('createStatus'+i);
+  statusEl.innerHTML = '<div style="font-size:12px;color:#888">Đang tạo sản phẩm...</div>';
+
+  // Find category ID by name
+  var catName = r.prod.kiotvietCategory||'';
+  var catId = null;
+  if (C.categories && catName) {
+    var found = C.categories.find(function(cat){return cat.name&&cat.name.toLowerCase().includes(catName.toLowerCase().split('>>').pop().trim());});
+    if (found) catId = found.categoryId||found.id;
+  }
+
+  var body = {
+    name: name,
+    basePrice: price,
+    allowsSale: true
+  };
+  if (barcode) body.barCode = barcode;
+  if (catId) body.categoryId = catId;
+
+  // Add inventory with cost if we have branch
+  var branchId = C.defaultBranchId;
+  if (branchId) {
+    body.inventories = [{ branchId: branchId, cost: r.inv.unit_price, onHand: 0 }];
+  }
+
+  px('https://public.kiotapi.com/products', {
+    method: 'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, kvHeaders()),
+    body: JSON.stringify(body)
+  }).then(function(resp) {
+    return resp.text().then(function(txt) {
+      if (resp.ok) {
+        try {
+          var newProd = JSON.parse(txt);
+          // Update result as verified
+          r.src = 'verified';
+          r.confirmed = true;
+          r.prod = Object.assign({}, r.prod, {
+            id: newProd.id,
+            kiotvietId: newProd.id,
+            kiotvietName: name,
+            kiotvietCode: barcode,
+            basePrice: price
+          });
+          r.oldSell = 0;
+          r.oldCost = r.inv.unit_price;
+          r.branchId = branchId;
+          r.newSell = price;
+          r.newCost = r.inv.unit_price;
+          // Save to DB
+          DB.set(r.code, r.inv.name, {id:newProd.id, name:name, barCode:barcode, categoryName:catName, basePrice:price, inventories:[{branchId:branchId,cost:r.inv.unit_price}]});
+          statusEl.innerHTML = '<div style="font-size:12px;color:var(--green);font-weight:700">✅ Đã tạo thành công! Đang làm mới...</div>';
+          setTimeout(function(){ renderPreview(); }, 800);
+        } catch(e) {
+          statusEl.innerHTML = '<div style="font-size:12px;color:var(--green)">✅ Tạo thành công!</div>';
+        }
+      } else {
+        statusEl.innerHTML = '<div style="font-size:12px;color:var(--red)">❌ Lỗi '+resp.status+': '+txt.substring(0,100)+'</div>';
+      }
+    });
+  }).catch(function(e) {
+    statusEl.innerHTML = '<div style="font-size:12px;color:var(--red)">❌ Lỗi kết nối: '+e.message+'</div>';
+  });
+}
+
 function renderPreview() {
-  var nMapped = allResults.filter(function(r){return r.src==='mapped';}).length;
+  var nVerified = allResults.filter(function(r){return r.src==='verified';}).length;
   var nApproved = allResults.filter(function(r){return r.src==='approved';}).length;
+  var nUnverified = allResults.filter(function(r){return r.src==='unverified';}).length;
   document.getElementById('stats').innerHTML =
-    '<div class="stat" style="background:#e3f2fd"><div class="n" style="color:#1565c0">'+nMapped+'</div><div class="t">🗂️ Từ bảng</div></div>'+
-    '<div class="stat" style="background:#e6f4ea"><div class="n" style="color:var(--green)">'+nApproved+'</div><div class="t">✅ Vừa duyệt</div></div>'+
+    '<div class="stat" style="background:#e6f4ea"><div class="n" style="color:var(--green)">'+(nVerified+nApproved)+'</div><div class="t">✅ Xác minh OK</div></div>'+
+    '<div class="stat" style="background:#fce8e6"><div class="n" style="color:var(--red)">'+nUnverified+'</div><div class="t">⚠️ Không khớp</div></div>'+
     '<div class="stat" style="background:#e8f0fe"><div class="n" style="color:var(--blue)">'+allResults.length+'</div><div class="t">📦 Tổng SP</div></div>';
 
   var html = '';
+  // Show unverified warnings first
+  var hasUnverified = allResults.some(function(r){return r.src==='unverified';});
+  if (hasUnverified) {
+    html += '<div style="background:#fce8e6;border:1.5px solid #f5c6c2;border-radius:10px;padding:12px;margin-bottom:12px;font-size:13px;color:var(--red);line-height:1.6">'
+      + '<strong>⚠️ CẢNH BÁO:</strong> Một số sản phẩm có trong bảng tham chiếu nhưng <strong>KHÔNG TÌM THẤY trong KiotViet</strong>.<br>'
+      + 'Có thể sản phẩm chưa được tạo trong KiotViet, hoặc barcode trong bảng tham chiếu bị sai.<br>'
+      + '<strong>App sẽ KHÔNG cập nhật các sản phẩm này.</strong>'
+      + '</div>';
+  }
+
   allResults.forEach(function(r, i) {
     if (!r.prod) return;
     var name = r.prod.kiotvietName||r.prod.name||'';
     var cat = r.prod.kiotvietCategory||r.prod.categoryName||'';
-    var tag = r.src==='mapped'
-      ? '<span class="tag tag-mem">🗂️ Từ bảng tham chiếu</span>'
-      : '<span class="tag tag-auto">✅ Vừa xác nhận</span>';
+
+    if (r.src === 'unverified') {
+      var suggestedName = r.prod.kiotvietName || r.inv.name || '';
+      var suggestedSell = calcSell(r.inv.unit_price, suggestedName, r.prod.kiotvietCategory||'', 0);
+      html += '<div class="card" style="border-color:#ffcc80;background:#fff8f0;">'
+        + '<span class="tag" style="background:#fff3e0;color:var(--orange)">⚠️ Chưa có trong KiotViet</span>'
+        + '<div style="font-size:13px;font-weight:700;margin-bottom:3px">'+suggestedName+'</div>'
+        + '<div style="font-size:11px;color:#888;margin-bottom:8px">Giá nhập: <b>'+vnd(r.inv.unit_price)+'</b> → Giá bán đề xuất: <b>'+vnd(suggestedSell)+'</b></div>'
+        + '<button onclick="goCreateSingle('+i+')" style="width:100%;padding:9px;background:var(--green);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">➕ Tạo sản phẩm này trong KiotViet</button>'
+        + '</div>';
+      return;
+    }
+
+    // Verified or approved
+    var tag = r.src==='approved'
+      ? '<span class="tag tag-auto">✅ Vừa xác nhận</span>'
+      : '<span class="tag tag-mem">✅ Xác minh KiotViet OK</span>';
 
     html += '<div class="card card-mem">'
       + tag
@@ -856,6 +1263,259 @@ try {
   if(sv.ck) document.getElementById('cKey').value=sv.ck;
   if(sv.ppx) document.getElementById('cPx').value=sv.ppx;
 } catch(e) {}
+
+// ===== CREATE PRODUCT FUNCTIONS =====
+var createItems = []; // items to create
+
+function goCreateSingle(idx) {
+  createItems = [allResults[idx]];
+  renderCreateScreen();
+  go('create');
+}
+
+function goCreateAll() {
+  createItems = allResults.filter(function(r){return r.src==='unverified';});
+  renderCreateScreen();
+  go('create');
+}
+
+function renderCreateScreen() {
+  var html = '';
+  createItems.forEach(function(r, ci) {
+    var name = r.prod.kiotvietName || r.inv.name || '';
+    var barcode = r.prod.kiotvietCode || '';
+    var cat = r.prod.kiotvietCategory || '';
+    var cost = r.inv.unit_price;
+    var sell = calcSell(cost, name, cat, 0);
+
+    // Get categories for dropdown
+    var catOptions = '<option value="">-- Chọn nhóm hàng --</option>';
+    (C.categories||[]).forEach(function(ct){
+      var catName = ct.name||'';
+      catOptions += '<option value="'+(ct.categoryId||ct.id||'')+'" '+(cat&&catName.toLowerCase().includes(cat.toLowerCase().split('>>').pop().trim())?'selected':'')+'>'+catName+'</option>';
+    });
+
+    html += '<div class="card" style="border-color:#b7dfbf;background:#f9fff9;margin-bottom:14px" id="ccard'+ci+'">'
+      + '<div style="font-size:12px;font-weight:800;color:var(--blue);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #e3ecff">📦 Sản phẩm '+(ci+1)+'/'+createItems.length+'</div>'
+
+      // Image section
+      + '<div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">'
+        + '<div id="imgPreview'+ci+'" style="width:80px;height:80px;border:2px dashed #dde5ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;overflow:hidden;background:#f8f9fa">📷</div>'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">TÊN SẢN PHẨM *</div>'
+          + '<input type="text" id="cName'+ci+'" value="'+name.replace(/"/g,"'")+'" style="width:100%;padding:8px 10px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;font-weight:700;outline:none" oninput="autoFetchImg('+ci+')">'
+          + '<div style="display:flex;gap:6px;margin-top:5px">'
+            + '<button onclick="fetchImg('+ci+')" style="padding:4px 8px;background:#e8f0fe;color:var(--blue);border:none;border-radius:5px;font-size:11px;cursor:pointer">🔍 Tìm ảnh</button>'
+            + '<label style="padding:4px 8px;background:#f0f4ff;color:#555;border:none;border-radius:5px;font-size:11px;cursor:pointer">📤 Upload<input type="file" accept="image/*" style="display:none" onchange="uploadImg('+ci+',event)"></label>'
+          + '</div>'
+        + '</div>'
+      + '</div>'
+      + '<input type="hidden" id="cImgUrl'+ci+'" value="">'
+
+      // Barcode + Unit
+      + '<div style="display:flex;gap:8px;margin-bottom:8px">'
+        + '<div style="flex:2">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">MÃ VẠCH</div>'
+          + '<input type="text" id="cBarcode'+ci+'" value="'+barcode+'" style="width:100%;padding:8px 10px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:monospace;outline:none">'
+        + '</div>'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">ĐƠN VỊ CƠ BẢN *</div>'
+          + '<select id="cUnit'+ci+'" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none">'
+            + '<option>Cái</option><option>Chiếc</option><option>Cây</option><option>Chai</option>'
+            + '<option>Gói</option><option>Hộp</option><option>Thùng</option><option>Kg</option>'
+            + '<option>Gram</option><option>Lít</option><option>Túi</option><option>Cuộn</option>'
+          + '</select>'
+        + '</div>'
+      + '</div>'
+
+      // Category
+      + '<div style="margin-bottom:8px">'
+        + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">NHÓM HÀNG</div>'
+        + '<select id="cCat'+ci+'" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none">'+catOptions+'</select>'
+      + '</div>'
+
+      // Prices
+      + '<div style="display:flex;gap:8px;margin-bottom:8px">'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">GIÁ VỐN (đ)</div>'
+          + '<input type="number" id="cCost'+ci+'" value="'+cost+'" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none">'
+        + '</div>'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">GIÁ BÁN LẺ (đ) *</div>'
+          + '<input type="number" id="cSell'+ci+'" value="'+sell+'" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none;font-weight:700;color:var(--blue)">'
+        + '</div>'
+        + '<div style="flex:1">'
+          + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:3px">GIÁ SỈ (đ)</div>'
+          + '<input type="number" id="cWhole'+ci+'" placeholder="Tùy chọn" style="width:100%;padding:8px;border:1.5px solid #dde5ff;border-radius:8px;font-size:13px;font-family:inherit;outline:none">'
+        + '</div>'
+      + '</div>'
+
+      // Extra units
+      + '<div style="margin-bottom:10px">'
+        + '<div style="font-size:10px;color:#888;font-weight:700;margin-bottom:5px">ĐƠN VỊ QUY ĐỔI (tùy chọn)</div>'
+        + '<div id="extraUnits'+ci+'">'
+          + '<div style="font-size:12px;color:#aaa">Chưa có — nhấn "+" để thêm (VD: Thùng = 30 cây)</div>'
+        + '</div>'
+        + '<button onclick="addExtraUnit('+ci+')" style="margin-top:5px;padding:4px 10px;background:#f0f4ff;color:var(--blue);border:1px solid #c5d7ff;border-radius:5px;font-size:11px;cursor:pointer">+ Thêm đơn vị</button>'
+      + '</div>'
+
+      // Status + Create button
+      + '<div id="cStatus'+ci+'"></div>'
+      + '<button onclick="doCreate('+ci+')" style="width:100%;padding:11px;background:var(--green);color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px">✅ Tạo sản phẩm này</button>'
+      + '</div>';
+  });
+
+  document.getElementById('createList').innerHTML = html;
+  // Auto-fetch images for all items
+  createItems.forEach(function(r, ci) {
+    if (r.prod.kiotvietCode) fetchImg(ci);
+  });
+}
+
+function fetchImg(ci) {
+  var barcode = (document.getElementById('cBarcode'+ci)||{value:''}).value.trim();
+  var name = (document.getElementById('cName'+ci)||{value:''}).value.trim();
+  var imgEl = document.getElementById('imgPreview'+ci);
+  var urlEl = document.getElementById('cImgUrl'+ci);
+  if (!barcode && !name) return;
+
+  // Try Open Food Facts first
+  if (barcode) {
+    fetch('https://world.openfoodfacts.org/api/v0/product/'+barcode+'.json')
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if (d.product && d.product.image_url) {
+          imgEl.innerHTML = '<img src="'+d.product.image_url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';
+          urlEl.value = d.product.image_url;
+        } else {
+          imgEl.innerHTML = '<div style="text-align:center;font-size:10px;color:#aaa;padding:4px">Không tìm thấy<br>ảnh</div>';
+        }
+      })
+      .catch(function(){
+        imgEl.innerHTML = '<div style="text-align:center;font-size:10px;color:#aaa;padding:4px">Không tìm thấy<br>ảnh</div>';
+      });
+  }
+}
+
+function uploadImg(ci, event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var imgEl = document.getElementById('imgPreview'+ci);
+  var urlEl = document.getElementById('cImgUrl'+ci);
+  var url = URL.createObjectURL(file);
+  imgEl.innerHTML = '<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">';
+  // Convert to base64 for upload
+  var rd = new FileReader();
+  rd.onload = function(e){ urlEl.value = e.target.result; };
+  rd.readAsDataURL(file);
+}
+
+var extraUnitCount = {};
+function addExtraUnit(ci) {
+  if (!extraUnitCount[ci]) extraUnitCount[ci] = 0;
+  var container = document.getElementById('extraUnits'+ci);
+  var ui = extraUnitCount[ci]++;
+  var units = ['Hộp','Thùng','Lốc','Két','Kg','Lít'];
+  var opts = units.map(function(u){return '<option>'+u+'</option>';}).join('');
+  // Remove placeholder text
+  if (container.querySelector('div') && !container.querySelector('.eu-row')) {
+    container.innerHTML = '';
+  }
+  var row = document.createElement('div');
+  row.className = 'eu-row';
+  row.style.cssText = 'display:flex;gap:6px;margin-bottom:5px;align-items:center';
+  row.innerHTML = '<select id="euName'+ci+'_'+ui+'" style="flex:2;padding:6px;border:1px solid #dde5ff;border-radius:6px;font-size:12px"><option>'+units.join('</option><option>')+'</option></select>'
+    + '<span style="font-size:12px;color:#888">=</span>'
+    + '<input type="number" id="euVal'+ci+'_'+ui+'" placeholder="Số lượng" style="flex:1;padding:6px;border:1px solid #dde5ff;border-radius:6px;font-size:12px">'
+    + '<span id="euBase'+ci+'" style="font-size:12px;color:#888"></span>'
+    + '<input type="number" id="euPrice'+ci+'_'+ui+'" placeholder="Giá" style="flex:2;padding:6px;border:1px solid #dde5ff;border-radius:6px;font-size:12px">'
+    + '<button onclick="this.parentElement.remove()" style="padding:4px 7px;background:#fce8e6;color:var(--red);border:none;border-radius:5px;cursor:pointer;font-size:12px">✕</button>';
+  // Update base unit label
+  var baseUnit = (document.getElementById('cUnit'+ci)||{value:'Cái'}).value;
+  row.querySelector('#euBase'+ci).textContent = baseUnit;
+  container.appendChild(row);
+}
+
+function doCreate(ci) {
+  var r = createItems[ci];
+  var name = (document.getElementById('cName'+ci)||{value:''}).value.trim();
+  var barcode = (document.getElementById('cBarcode'+ci)||{value:''}).value.trim();
+  var catId = (document.getElementById('cCat'+ci)||{value:''}).value;
+  var unit = (document.getElementById('cUnit'+ci)||{value:'Cái'}).value;
+  var cost = parseInt((document.getElementById('cCost'+ci)||{value:'0'}).value)||0;
+  var sell = parseInt((document.getElementById('cSell'+ci)||{value:'0'}).value)||0;
+  var whole = parseInt((document.getElementById('cWhole'+ci)||{value:'0'}).value)||0;
+  var imgUrl = (document.getElementById('cImgUrl'+ci)||{value:''}).value;
+
+  if (!name) { alert('Vui lòng nhập tên sản phẩm!'); return; }
+  if (!sell) { alert('Vui lòng nhập giá bán!'); return; }
+
+  var statusEl = document.getElementById('cStatus'+ci);
+  statusEl.innerHTML = '<div style="font-size:12px;color:#888;margin-bottom:6px">Đang tạo sản phẩm...</div>';
+
+  // Build body
+  var body = { name:name, basePrice:sell, allowsSale:true, unit:unit };
+  if (barcode) body.barCode = barcode;
+  if (catId) body.categoryId = parseInt(catId);
+
+  // Inventories (cost)
+  if (C.defaultBranchId) {
+    body.inventories = [{ branchId:C.defaultBranchId, cost:cost, onHand:0 }];
+  }
+
+  // Extra units
+  var extraUnits = [];
+  var container = document.getElementById('extraUnits'+ci);
+  var rows = container.querySelectorAll('.eu-row');
+  rows.forEach(function(row, ui) {
+    var euName = row.querySelector('[id^="euName"]');
+    var euVal = row.querySelector('[id^="euVal"]');
+    var euPrice = row.querySelector('[id^="euPrice"]');
+    if (euName && euVal && euVal.value) {
+      extraUnits.push({ unitName:euName.value, conversionValue:parseInt(euVal.value)||1, isBaseUnit:false, price:parseInt(euPrice&&euPrice.value)||sell*parseInt(euVal.value||1) });
+    }
+  });
+  if (extraUnits.length > 0) {
+    body.units = [{ unitName:unit, conversionValue:1, isBaseUnit:true, price:sell }].concat(extraUnits);
+  }
+
+  // Image
+  if (imgUrl && imgUrl.startsWith('http')) {
+    body.images = [imgUrl];
+  }
+
+  px('https://public.kiotapi.com/products', {
+    method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, kvHeaders()),
+    body: JSON.stringify(body)
+  }).then(function(resp) {
+    return resp.text().then(function(txt) {
+      if (resp.ok) {
+        var newProd;
+        try { newProd = JSON.parse(txt); } catch(e) { newProd = {id:0}; }
+        // Update result
+        r.src = 'verified';
+        r.confirmed = true;
+        r.prod = Object.assign({}, r.prod, { id:newProd.id, kiotvietId:newProd.id, kiotvietName:name, kiotvietCode:barcode, basePrice:sell });
+        r.oldSell = 0; r.oldCost = cost; r.branchId = C.defaultBranchId;
+        r.newSell = sell; r.newCost = cost;
+        // Save to mapping DB
+        DB.set(r.code, r.inv.name, { id:newProd.id, name:name, barCode:barcode, categoryName:'', basePrice:sell, inventories:[{branchId:C.defaultBranchId,cost:cost}] });
+        statusEl.innerHTML = '<div style="background:#e6f4ea;border:1px solid #b7dfbf;border-radius:8px;padding:8px;font-size:12px;color:var(--green);font-weight:700;margin-bottom:6px">✅ Tạo thành công! SP đã được thêm vào KiotViet.</div>';
+        // Disable create button
+        var btn = statusEl.nextElementSibling;
+        if(btn){btn.disabled=true;btn.style.background='#bbb';btn.textContent='✅ Đã tạo';}
+      } else {
+        statusEl.innerHTML = '<div style="background:#fce8e6;border-radius:8px;padding:8px;font-size:12px;color:var(--red)">❌ Lỗi '+resp.status+': '+txt.substring(0,150)+'</div>';
+      }
+    });
+  }).catch(function(e) {
+    statusEl.innerHTML = '<div style="background:#fce8e6;border-radius:8px;padding:8px;font-size:12px;color:var(--red)">❌ Lỗi kết nối: '+e.message+'</div>';
+  });
+}
+
+function autoFetchImg(ci) { /* triggered on name change - debounced */ }
+
 </script>
 </body>
 </html>
