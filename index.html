@@ -1141,28 +1141,70 @@ function updateBtn() {
 // ===== UPDATE =====
 function doUpdate() {
   var toUp = allResults.filter(function(r){return r.confirmed&&r.prod;});
+  if (!toUp.length) { alert('Không có sản phẩm nào để cập nhật!'); return; }
   ld('Đang cập nhật giá vào KiotViet...');
-  var ok=0, fail=0;
+  var logs = [];
   var chain = Promise.resolve();
+
   toUp.forEach(function(r) {
     chain = chain.then(function() {
-      ld('Cập nhật:\n'+(r.prod.kiotvietName||r.prod.name||'').substring(0,35)+'...');
-      var body = { basePrice: r.newSell };
-      if (r.newCost && r.branchId) body.inventories = [{branchId:r.branchId, cost:r.newCost}];
+      var name = r.prod.kiotvietName||r.prod.name||'(?)';
       var pid = r.prod.kiotvietId||r.prod.id;
+      ld('Cập nhật:\n'+name.substring(0,35)+'...');
+
+      if (!pid || pid===0) {
+        logs.push({ok:false, name:name, msg:'ID sản phẩm = 0 → cần import lại bảng tham chiếu'});
+        return;
+      }
+
+      var body = { basePrice: r.newSell };
+      if (r.newCost && r.branchId) {
+        body.inventories = [{branchId:r.branchId, cost:r.newCost}];
+      }
+
       return px('https://public.kiotapi.com/products/'+pid, {
         method:'PUT',
-        headers:Object.assign({'Content-Type':'application/json'},kvHeaders()),
+        headers:Object.assign({'Content-Type':'application/json'}, kvHeaders()),
         body:JSON.stringify(body)
-      }).then(function(resp){if(resp.ok)ok++;else fail++;}).catch(function(){fail++;});
+      }).then(function(resp) {
+        return resp.text().then(function(txt) {
+          if (resp.ok) {
+            logs.push({ok:true, name:name, sell:r.newSell, cost:r.newCost, pid:pid});
+          } else {
+            var errMsg = txt.substring(0,120);
+            try { var j=JSON.parse(txt); errMsg=j.message||j.error||errMsg; } catch(e){}
+            logs.push({ok:false, name:name, msg:'HTTP '+resp.status+': '+errMsg, pid:pid});
+          }
+        });
+      }).catch(function(e) {
+        logs.push({ok:false, name:name, msg:'Lỗi kết nối: '+e.message});
+      });
     });
   });
+
   chain.then(function() {
     ul();
-    document.getElementById('dTitle').textContent = ok>0 ? '🎉 Xong!' : '❌ Có lỗi!';
-    document.getElementById('dSub').innerHTML =
-      (ok>0?'<div style="color:var(--green);margin-bottom:6px">✅ <b>'+ok+'</b> sản phẩm đã cập nhật thành công</div>':'')
-      +(fail>0?'<div style="color:var(--red)">❌ '+fail+' sản phẩm thất bại</div>':'');
+    var okList = logs.filter(function(l){return l.ok;});
+    var failList = logs.filter(function(l){return !l.ok;});
+    document.getElementById('dTitle').textContent = okList.length>0 ? '🎉 Xong!' : '❌ Có lỗi!';
+
+    var html = '';
+    if (okList.length>0) {
+      html += '<div style="color:var(--green);margin-bottom:8px;font-weight:700">✅ Cập nhật thành công '+okList.length+' sản phẩm:</div>';
+      okList.forEach(function(l){
+        html += '<div style="font-size:12px;padding:4px 0;border-bottom:1px solid #e8f5e9">• '+l.name
+          +'<br>&nbsp;&nbsp;Giá bán: '+l.sell.toLocaleString('vi-VN')+'đ'
+          +(l.cost?' | Giá vốn: '+l.cost.toLocaleString('vi-VN')+'đ':'')
+          +' | ID: '+l.pid+'</div>';
+      });
+    }
+    if (failList.length>0) {
+      html += '<div style="color:var(--red);margin-top:10px;margin-bottom:6px;font-weight:700">❌ Thất bại '+failList.length+' sản phẩm:</div>';
+      failList.forEach(function(l){
+        html += '<div style="font-size:12px;padding:4px 0;border-bottom:1px solid #fce8e6;color:var(--red)">• '+l.name+'<br>&nbsp;&nbsp;'+l.msg+'</div>';
+      });
+    }
+    document.getElementById('dSub').innerHTML = html;
     go('done');
   });
 }
