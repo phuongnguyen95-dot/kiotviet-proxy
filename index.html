@@ -695,35 +695,18 @@ function kByCode(code) {
   var searchCode = String(code||'').trim();
   if (!searchCode) return Promise.resolve(null);
 
-  // Search by barCode — STRICT: verify returned product barcode matches
+  // Search all products with this barcode
   return px('https://public.kiotapi.com/products?barCode='+encodeURIComponent(searchCode)+'&includeInventory=true', {headers:kvHeaders()})
     .then(function(r){return r.ok?r.json():{data:[]};})
     .then(function(d){
       var list = d.data||[];
-      // Verify barcode matches exactly
-      var exact = list.find(function(p){
-        var pbc = String(p.barCode||p.code||'').trim();
-        return pbc === searchCode;
-      });
-      if (exact) return exact;
-      if (list.length>0) {
-        // Return first only if barcode field matches
-        var first = list[0];
-        var firstBc = String(first.barCode||'').trim();
-        if (firstBc === searchCode) return first;
+      // ULTRA STRICT: only accept if barCode field EXACTLY matches
+      for (var i=0;i<list.length;i++) {
+        var p = list[i];
+        if (String(p.barCode||'').trim() === searchCode) return p;
       }
-      // No exact barcode match — try product code endpoint
-      return px('https://public.kiotapi.com/products/code/'+encodeURIComponent(searchCode)+'?includeInventory=true', {headers:kvHeaders()})
-        .then(function(r){return r.ok?r.json():null;})
-        .then(function(d){
-          if (!d||!d.id) return null;
-          // Verify: product code or barcode must match
-          var pbc = String(d.barCode||'').trim();
-          var pcode = String(d.code||'').trim();
-          if (pbc===searchCode||pcode===searchCode) return d;
-          return null; // refuse wrong match
-        })
-        .catch(function(){return null;});
+      // Nothing matched by barCode field — do NOT fallback to avoid wrong matches
+      return null;
     })
     .catch(function(){return null;});
 }
