@@ -1,36 +1,49 @@
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
-  const url = new URL(req.url);
-  const target = url.searchParams.get('url');
-  
-  const headers = new Headers();
-  headers.set('Access-Control-Allow-Origin', '*');
-  headers.set('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type,Authorization,Retailer');
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,Retailer,x-api-key,anthropic-version,anthropic-dangerous-direct-browser-access',
+  };
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers });
+    return new Response(null, { status: 200, headers: cors });
+  }
+
+  let target;
+  try {
+    target = new URL(req.url).searchParams.get('url');
+  } catch(e) {
+    return new Response(JSON.stringify({error:'Invalid URL'}), {status:400, headers:{...cors,'Content-Type':'application/json'}});
   }
 
   if (!target) {
-    return new Response(JSON.stringify({ error: 'Missing url' }), { status: 400, headers });
+    return new Response(JSON.stringify({error:'Missing url param'}), {status:400, headers:{...cors,'Content-Type':'application/json'}});
   }
 
-  const fwdHeaders = new Headers();
-  fwdHeaders.set('Content-Type', req.headers.get('content-type') || 'application/json');
-  if (req.headers.get('authorization')) fwdHeaders.set('Authorization', req.headers.get('authorization'));
-  if (req.headers.get('retailer')) fwdHeaders.set('Retailer', req.headers.get('retailer'));
+  const fwd = {};
+  const ct = req.headers.get('content-type');
+  if (ct) fwd['Content-Type'] = ct;
+  const auth = req.headers.get('authorization');
+  if (auth) fwd['Authorization'] = auth;
+  const retailer = req.headers.get('retailer');
+  if (retailer) fwd['Retailer'] = retailer;
 
-  const fetchOpts = { method: req.method, headers: fwdHeaders };
-  if (req.method !== 'GET') {
+  const opts = { method: req.method, headers: fwd };
+  if (!['GET','HEAD'].includes(req.method)) {
     const body = await req.text();
-    if (body) fetchOpts.body = body;
+    if (body) opts.body = body;
   }
 
-  const resp = await fetch(target, fetchOpts);
-  const data = await resp.text();
-
-  headers.set('Content-Type', 'application/json');
-  return new Response(data, { status: resp.status, headers });
+  try {
+    const res = await fetch(target, opts);
+    const data = await res.text();
+    return new Response(data, {
+      status: res.status,
+      headers: { ...cors, 'Content-Type': res.headers.get('content-type') || 'application/json' }
+    });
+  } catch(e) {
+    return new Response(JSON.stringify({error: e.message}), {status:500, headers:{...cors,'Content-Type':'application/json'}});
+  }
 }
