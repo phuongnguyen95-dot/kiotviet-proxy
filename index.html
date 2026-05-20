@@ -711,10 +711,26 @@ function kByCode(code) {
     .catch(function(){return null;});
 }
 function kByName(name, pageSize) {
-  return px('https://public.kiotapi.com/products?name='+encodeURIComponent(name)+'&pageSize='+(pageSize||8)+'&includeInventory=true', {headers:kvHeaders()})
-    .then(function(r){return r.ok?r.json():{data:[]};})
-    .then(function(d){return d.data||[];})
-    .catch(function(){return[];});
+  var ps = pageSize||8;
+  // Try exact name first
+  return px('https://public.kiotapi.com/products?name='+encodeURIComponent(name)+'&pageSize='+ps+'&includeInventory=true', {headers:kvHeaders()})
+    .then(function(r){
+      if(!r.ok) throw new Error('API lỗi '+r.status);
+      return r.json();
+    })
+    .then(function(d){
+      var list = d.data||[];
+      if (list.length > 0) return list;
+      // If no results, try with shorter words
+      var words = name.split(/\s+/).filter(function(w){return w.length>2;});
+      if (words.length > 1) {
+        return px('https://public.kiotapi.com/products?name='+encodeURIComponent(words[0])+'&pageSize='+ps+'&includeInventory=true', {headers:kvHeaders()})
+          .then(function(r2){return r2.ok?r2.json():{data:[]};})
+          .then(function(d2){return d2.data||[];});
+      }
+      return [];
+    })
+    .catch(function(e){console.error('kByName error:',e);return[];});
 }
 
 // ===== PROCESS =====
@@ -730,7 +746,7 @@ function process() {
       model:'claude-sonnet-4-6', max_tokens:2000,
       messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:C.imgType,data:C.imgBase64}},
-        {type:'text',text:'Đây là ảnh hóa đơn/đơn nhập hàng NCC, có thể bị xoay. Hãy đọc đúng chiều.\n\nNHIỆM VỤ: Đọc BẢNG HÀNG HÓA (cột Mã hàng, Tên hàng, Đơn giá).\n\nTrả về JSON (chỉ JSON, không giải thích):\n{"items":[{"name":"tên SP đầy đủ","code":"mã hàng NCC","unit_price":12345}]}\n\nQUY TẮC:\n✅ Tên SP từ cột "Tên hàng"/"Miêu tả"\n✅ Code: mã hàng NCC (số 6-10 chữ số trong bảng)\n✅ Giá: "Giá Bán"/"Giá lẻ"/"Giá lẻ (Sau KM,CK)" — giá 1 đơn vị\n❌ KHÔNG lấy tên KH, địa chỉ, nhà cung cấp, tiêu đề\n❌ KHÔNG lấy dòng tổng/hoàn thuế\nChỉ JSON.'}
+        {type:'text',text:'Đây là ảnh hóa đơn/đơn nhập hàng NCC, có thể bị xoay. Hãy đọc đúng chiều.\n\nNHIỆM VỤ: Đọc BẢNG HÀNG HÓA (cột Mã hàng, Tên hàng, Đơn giá).\n\nTrả về JSON (chỉ JSON, không giải thích):\n{"items":[{"name":"tên SP đầy đủ","code":"mã hàng NCC","unit_price":12345,"unit":"đơn vị tính"}]}\n\nQUY TẮC:\n✅ Tên SP từ cột "Tên hàng"/"Miêu tả"\n✅ Code: mã hàng NCC (số 6-10 chữ số trong bảng)\n✅ Giá: "Giá Bán"/"Giá lẻ"/"Giá lẻ (Sau KM,CK)" — giá 1 đơn vị\n✅ Đơn vị: từ cột "ĐVT" (thùng, chai, cái, hộp, lốc...)\n❌ KHÔNG lấy tên KH, địa chỉ, nhà cung cấp, tiêu đề\n❌ KHÔNG lấy dòng tổng/hoàn thuế\nChỉ JSON.'}
       ]}]
     })
   }).then(function(cr) {
@@ -850,6 +866,24 @@ function process() {
 
     return Promise.all(promises);
   }).then(function() {
+    // Auto-detect bulk units and convert to per-item price
+    allResults.forEach(function(r) {
+      var invName = (r.inv.name||'').toLowerCase();
+      var invUnit = (r.inv.unit||'').toLowerCase();
+      var isBulk = /th[uù]ng|carton|case/i.test(invUnit) || /th[uù]ng|\/ *th[uù]ng/i.test(invName);
+      var isBox = /h[oộ]p|l[oố]c|k[eé]t/i.test(invUnit) || /h[oộ]p|l[oố]c|k[eé]t/i.test(invName);
+      if (isBulk && r.newCost >= 20000) {
+        // Auto-apply conversion for thùng (default 24)
+        r.bulkDetected = true;
+        r.bulkFactor = 24;
+        r.bulkOriginalCost = r.newCost;
+      } else if (isBox && r.newCost >= 10000) {
+        r.bulkDetected = true;
+        r.bulkFactor = 6;
+        r.bulkOriginalCost = r.newCost;
+      }
+    });
+
     // Deduplicate by KiotViet ID
     var seenKvIds = new Set();
     allResults = allResults.filter(function(r) {
@@ -876,6 +910,11 @@ function process() {
       go('pre');
     }
   }).catch(function(e) { ul(); se('err-up','❌ '+e.message); });
+}
+
+function updateConv(pi, totalPrice) {
+  var v = parseInt(document.getElementById('conv'+pi).value) || 1;
+  document.getElementById('convPrice'+pi).textContent = Math.round(totalPrice/v).toLocaleString('vi-VN') + 'đ';
 }
 
 // ===== APPROVAL UI =====
@@ -929,6 +968,20 @@ function renderApproval() {
               + '<script>document.getElementById("conv'+pi+'").oninput=function(){var v=parseInt(this.value)||1;document.getElementById("convResult'+pi+'").textContent=v;document.getElementById("unitPrice'+pi+'").textContent=Math.round('+r.inv.unit_price+'/v).toLocaleString("vi-VN")+"đ";}<\/script>'
               + '</div>' : '';
           }())
+        + (function(){
+          var nm = (r.inv.name||'').toLowerCase();
+          var price = r.inv.unit_price;
+          var isBulk = /th[uù]ng|h[oộ]p|l[oố]c|k[eé]t|carton/i.test(nm);
+          if (!isBulk || price < 20000) return '';
+          return '<div style="background:#e8f0fe;border:1px solid #c5d7ff;border-radius:8px;padding:10px;margin-bottom:10px">'
+            + '<div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:6px">📦 Đơn ghi giá theo thùng/hộp — cần chia lẻ:</div>'
+            + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+            + '<span style="font-size:12px">1 thùng/hộp =</span>'
+            + '<input type="number" id="conv'+pi+'" value="24" min="1" style="width:60px;padding:5px;border:1.5px solid var(--blue);border-radius:6px;font-size:14px;font-weight:700;text-align:center" oninput="updateConv('+pi+','+price+')">'
+            + '<span style="font-size:12px">chai/cái</span>'
+            + '<span style="font-size:12px;margin-left:8px">→ Giá lẻ: <b id="convPrice'+pi+'">'+Math.round(price/24).toLocaleString("vi-VN")+'đ</b></span>'
+            + '</div></div>';
+        }())
         + '<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">🔍 Tìm sản phẩm trong KiotViet:</div>'
 
         + '<div class="srow">'
@@ -1044,9 +1097,10 @@ function confirmLink(pi, type, j) {
   var actualCost = convFactor > 1 ? Math.round(r.inv.unit_price / convFactor) : r.inv.unit_price;
 
   // Save to mapping DB with conversion info
-  DB.set(r.code, r.inv.name, prod);
+  var nccKey = r.code || r.inv.name.replace(/[^a-zA-Z0-9]/g,'_').substring(0,30);
+  DB.set(nccKey, r.inv.name, prod);
   if (convFactor > 1) {
-    DB._d[r.code].convFactor = convFactor;
+    DB._d[nccKey].convFactor = convFactor;
     DB.save();
   }
 
@@ -1194,10 +1248,15 @@ function renderPreview() {
         + '<label class="cbwrap"><input type="checkbox" '+(r.confirmed?'checked':'')+' onchange="tog('+i+')">'
           + '<span id="cb'+i+'" style="color:'+(r.confirmed?'var(--green)':'#999')+'">'+(r.confirmed?'Cập nhật':'Bỏ qua')+'</span></label>'
       + '</div>'
+      + (r.bulkDetected ? '<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px">'
+        + '<b>📦 Giá theo thùng/hộp:</b> '+vnd(r.bulkOriginalCost)+' | '
+        + '1 thùng = <input type="number" value="'+r.bulkFactor+'" min="1" style="width:50px;padding:2px 4px;border:1.5px solid var(--orange);border-radius:4px;text-align:center;font-weight:700;font-size:12px" onchange="recalcBulk('+i+',this.value)"> chai → <b id="bulkUnit'+i+'">'+vnd(Math.round(r.bulkOriginalCost/r.bulkFactor))+'</b>/chai'
+        + '</div>' : '')
       + '<div class="prow">'
-        + '<div class="pbox"><div class="plbl">Giá vốn</div>'+(r.oldCost?'<div class="pold">'+vnd(r.oldCost)+'</div>':'')+'<div class="pnew">'+vnd(r.newCost)+'</div></div>'
+        + '<div class="pbox"><div class="plbl">Giá vốn (lẻ)</div>'+(r.oldCost?'<div class="pold">'+vnd(r.oldCost)+'</div>':'')
+          + '<div style="display:flex;align-items:center;gap:4px;margin-top:2px"><input class="pinput" id="cost'+i+'" type="number" value="'+(r.bulkDetected?Math.round(r.bulkOriginalCost/r.bulkFactor):r.newCost)+'" onchange="eCost('+i+',this.value)" style="border-color:var(--green)"><span style="font-size:11px;color:#888">đ</span></div></div>'
         + '<div class="pbox"><div class="plbl">Giá bán</div>'+(r.oldSell?'<div class="pold">'+vnd(r.oldSell)+'</div>':'')
-          + '<div style="display:flex;align-items:center;gap:4px;margin-top:2px"><input class="pinput" type="number" value="'+r.newSell+'" onchange="eSell('+i+',this.value)"><span style="font-size:11px;color:#888">đ</span></div></div>'
+          + '<div style="display:flex;align-items:center;gap:4px;margin-top:2px"><input class="pinput" id="sell'+i+'" type="number" value="'+r.newSell+'" onchange="eSell('+i+',this.value)"><span style="font-size:11px;color:#888">đ</span></div></div>'
       + '</div>'
       + '</div>';
   });
@@ -1211,7 +1270,23 @@ function tog(i) {
   if(cb){cb.textContent=allResults[i].confirmed?'Cập nhật':'Bỏ qua';cb.style.color=allResults[i].confirmed?'var(--green)':'#999';}
   updateBtn();
 }
+function eCost(i,v){allResults[i].newCost=parseInt(v)||0;}
 function eSell(i,v){allResults[i].newSell=parseInt(v)||0;}
+function recalcBulk(i,v) {
+  var factor = parseInt(v)||1;
+  var r = allResults[i];
+  r.bulkFactor = factor;
+  var unitCost = Math.round(r.bulkOriginalCost / factor);
+  r.newCost = unitCost;
+  r.newSell = calcSell(unitCost, r.prod.kiotvietName||r.prod.name||'', r.prod.kiotvietCategory||'', r.oldSell);
+  // Update UI
+  var costEl = document.getElementById('cost'+i);
+  var sellEl = document.getElementById('sell'+i);
+  var bulkEl = document.getElementById('bulkUnit'+i);
+  if(costEl) costEl.value = unitCost;
+  if(sellEl) sellEl.value = r.newSell;
+  if(bulkEl) bulkEl.textContent = vnd(unitCost);
+}
 function updateBtn() {
   var n = allResults.filter(function(r){return r.confirmed&&r.prod;}).length;
   var b = document.getElementById('btnUpdate');
@@ -1239,8 +1314,9 @@ function doUpdate() {
       }
 
       var body = { basePrice: r.newSell };
-      if (r.newCost && r.branchId) {
-        body.inventories = [{branchId:r.branchId, cost:r.newCost}];
+      var bid = r.branchId || C.defaultBranchId;
+      if (r.newCost && bid) {
+        body.inventories = [{branchId:bid, cost:r.newCost}];
       }
 
       return px('https://public.kiotapi.com/products/'+pid, {
