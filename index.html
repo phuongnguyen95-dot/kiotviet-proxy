@@ -407,9 +407,17 @@ function resetImg() {
 // ===== KIOTVIET API =====
 function kvHeaders() { return {'Retailer':C.ret,'Authorization':'Bearer '+C.token}; }
 function kByCode(code) {
-  return px('https://public.kiotapi.com/products/code/'+encodeURIComponent(code)+'?includeInventory=true', {headers:kvHeaders()})
-    .then(function(r){return r.ok?r.json():null;})
-    .then(function(d){return (d&&d.id)?d:null;})
+  // Try barcode search first, then product code search
+  return px('https://public.kiotapi.com/products?barCode='+encodeURIComponent(code)+'&includeInventory=true', {headers:kvHeaders()})
+    .then(function(r){return r.ok?r.json():{data:[]};})
+    .then(function(d){
+      if(d.data&&d.data.length>0) return d.data[0];
+      // Fallback: search by product code
+      return px('https://public.kiotapi.com/products/code/'+encodeURIComponent(code)+'?includeInventory=true', {headers:kvHeaders()})
+        .then(function(r){return r.ok?r.json():null;})
+        .then(function(d){return (d&&d.id)?d:null;})
+        .catch(function(){return null;});
+    })
     .catch(function(){return null;});
 }
 function kByName(name, pageSize) {
@@ -469,7 +477,6 @@ function process() {
       var code = String(item.code||'').trim();
       var mapped = code ? DB.get(code) : null;
       if (mapped) {
-        // Found in mapping DB → auto match
         var res = {
           idx:idx, inv:item, code:code, prod:mapped, src:'mapped',
           newCost:item.unit_price,
@@ -477,9 +484,22 @@ function process() {
           oldSell:0, oldCost:0, branchId:null, confirmed:true
         };
         allResults.push(res);
-        // Fetch live price data
-        return kByCode(mapped.kiotvietCode||String(mapped.kiotvietId)).then(function(live) {
-          if (live) { res.prod.basePrice=live.basePrice; res.oldSell=live.basePrice; res.oldCost=(live.inventories&&live.inventories[0])?live.inventories[0].cost:0; res.branchId=(live.inventories&&live.inventories[0])?live.inventories[0].branchId:null; res.prod.id=live.id; res.newSell=calcSell(item.unit_price,live.name,live.categoryName,live.basePrice); }
+        // Fetch live data: try barcode, then ID, then name
+        var livePromise;
+        if (mapped.kiotvietCode) {
+          livePromise = kByCode(mapped.kiotvietCode);
+        } else if (mapped.kiotvietId && mapped.kiotvietId !== 0) {
+          livePromise = kByCode(String(mapped.kiotvietId));
+        } else if (mapped.kiotvietName) {
+          livePromise = kByName(mapped.kiotvietName, 1).then(function(rs){return rs[0]||null;});
+        } else {
+          livePromise = Promise.resolve(null);
+        }
+        return livePromise.then(function(live) {
+          if (live) { res.prod.basePrice=live.basePrice; res.oldSell=live.basePrice; res.oldCost=(live.inventories&&live.inventories[0])?live.inventories[0].cost:0; res.branchId=(live.inventories&&live.inventories[0])?live.inventories[0].branchId:null; res.prod.id=live.id; res.newSell=calcSell(item.unit_price,live.name,live.categoryName,live.basePrice);
+            // Update DB with live barcode
+            if (live.barCode&&!mapped.kiotvietCode) { DB._d[code].kiotvietCode=live.barCode||live.code||''; DB._d[code].kiotvietId=live.id; DB.save(); }
+          }
         }).catch(function(){});
       } else {
         // Not in mapping → needs approval
