@@ -1319,24 +1319,41 @@ function doUpdate() {
         return;
       }
 
-      var body = { basePrice: r.newSell };
       var bid = r.branchId || C.defaultBranchId;
+
+      // Step 1: Update giá bán (basePrice)
+      var body1 = { basePrice: r.newSell };
       if (r.newCost && bid) {
-        body.inventories = [{branchId:bid, cost:r.newCost}];
+        body1.inventories = [{branchId:bid, cost:r.newCost}];
       }
 
       return px('https://public.kiotapi.com/products/'+pid, {
         method:'PUT',
         headers:Object.assign({'Content-Type':'application/json'}, kvHeaders()),
-        body:JSON.stringify(body)
-      }).then(function(resp) {
-        return resp.text().then(function(txt) {
-          if (resp.ok) {
-            logs.push({ok:true, name:name, sell:r.newSell, cost:r.newCost, pid:pid});
+        body:JSON.stringify(body1)
+      }).then(function(resp1) {
+        return resp1.text().then(function(txt1) {
+          var sellOk = resp1.ok;
+
+          // Step 2: Update giá vốn separately if needed
+          if (r.newCost && bid) {
+            var body2 = { inventories:[{branchId:bid, cost:r.newCost}] };
+            return px('https://public.kiotapi.com/products/'+pid, {
+              method:'PUT',
+              headers:Object.assign({'Content-Type':'application/json'}, kvHeaders()),
+              body:JSON.stringify(body2)
+            }).then(function(resp2) {
+              return resp2.text().then(function(txt2) {
+                var costOk = resp2.ok;
+                var info = 'Giá bán '+(sellOk?'✅':'❌')+' '+r.newSell.toLocaleString('vi-VN')+'đ | Giá vốn '+(costOk?'✅':'❌')+' '+r.newCost.toLocaleString('vi-VN')+'đ';
+                if (!costOk) info += ' ('+txt2.substring(0,60)+')';
+                logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:info});
+              });
+            }).catch(function(){ logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:'Giá bán '+(sellOk?'✅':'❌')+' | Giá vốn ❌ lỗi kết nối'}); });
           } else {
-            var errMsg = txt.substring(0,120);
-            try { var j=JSON.parse(txt); errMsg=j.message||j.error||errMsg; } catch(e){}
-            logs.push({ok:false, name:name, msg:'HTTP '+resp.status+': '+errMsg, pid:pid});
+            var info = 'Giá bán '+(sellOk?'✅':'❌')+' '+r.newSell.toLocaleString('vi-VN')+'đ | Giá vốn ⚠️ không gửi (thiếu branchId)';
+            if (!sellOk) info += ' ('+txt1.substring(0,60)+')';
+            logs.push({ok:sellOk, name:name, sell:r.newSell, cost:r.newCost, pid:pid, info:info});
           }
         });
       }).catch(function(e) {
@@ -1356,8 +1373,7 @@ function doUpdate() {
       html += '<div style="color:var(--green);margin-bottom:8px;font-weight:700">✅ Cập nhật thành công '+okList.length+' sản phẩm:</div>';
       okList.forEach(function(l){
         html += '<div style="font-size:12px;padding:4px 0;border-bottom:1px solid #e8f5e9">• '+l.name
-          +'<br>&nbsp;&nbsp;Giá bán: '+l.sell.toLocaleString('vi-VN')+'đ'
-          +(l.cost?' | Giá vốn: '+l.cost.toLocaleString('vi-VN')+'đ':'')
+          +'<br>&nbsp;&nbsp;'+( l.info||('Giá bán: '+l.sell.toLocaleString('vi-VN')+'đ'+(l.cost?' | Giá vốn: '+l.cost.toLocaleString('vi-VN')+'đ':'')))
           +' | ID: '+l.pid+'</div>';
       });
     }
