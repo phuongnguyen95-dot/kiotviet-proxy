@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cập nhật giá NCC → KiotViet</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#1a73e8;--blue-dark:#1557b0;--green:#1e8e3e;--orange:#e37400;
+  --purple:#6a1b9a;--red:#c5221f;--gray:#777;
+  --bg:#f0f4ff;--card:#fff;--border:#e3ecff;
+}
+body{font-family:'Be Vietnam Pro',sans-serif;background:var(--bg);min-height:100vh;color:#1a1a2e}
+.app{max-width:520px;margin:0 auto;min-height:100vh;background:#fff;box-shadow:0 0 40px rgba(0,0,0,.1)}
+.hdr{background:linear-gradient(135deg,var(--blue),var(--blue-dark));padding:18px 16px;color:#fff}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr p{font-size:11px;opacity:.8;margin-top:2px}
+.screen{padding:16px;display:none}
+.screen.active{display:block}
+/* Inputs */
+.lbl{font-size:11px;font-weight:700;color:#666;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+input[type=text],input[type=password]{width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;font-family:inherit;outline:none;transition:border .2s}
+input:focus{border-color:var(--blue)}
+.fld{margin-bottom:11px}
+/* Buttons */
+.btn{display:block;width:100%;padding:13px;border:none;border-radius:10px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .15s;text-align:center;margin-bottom:6px}
+.btn-primary{background:linear-gradient(135deg,var(--blue),var(--blue-dark));color:#fff}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(26,115,232,.35)}
+.btn-primary:disabled{background:#bbb;transform:none;box-shadow:none;cursor:not-allowed}
+.btn-secondary{background:var(--bg);color:var(--blue);border:1.5px solid #c5d7ff}
+.btn-sm{padding:6px 12px;border-radius:7px;font-size:12px;font-weight:700;border:none;cursor:pointer}
+.btn-green{background:var(--green);color:#fff}
+.btn-purple{background:var(--purple);color:#fff}
+.btn-blue{background:var(--blue);color:#fff}
+.btn-gray{background:#eee;color:#555}
+/* Alerts */
+.alert{padding:10px 13px;border-radius:9px;font-size:13px;margin-bottom:10px;line-height:1.5}
+.alert-err{background:#fce8e6;color:var(--red)}
+.alert-info{background:#e8f0fe;color:var(--blue)}
+.alert-warn{background:#fff3e0;color:var(--orange)}
+/* Cards */
+.card{border-radius:12px;padding:12px;margin-bottom:9px;border:1.5px solid}
+.card-auto{border-color:#b7dfbf;background:#f9fff9}
+.card-mem{border-color:#90caf9;background:#e3f2fd}
+.card-pending{border-color:#ffcc80;background:#fff8f0}
+.card-done{border-color:#b7dfbf;background:#f9fff9}
+.card-gray{border-color:#ddd;background:#fafafa}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;margin-bottom:7px}
+.tag-auto{background:#e6f4ea;color:var(--green)}
+.tag-mem{background:#e3f2fd;color:#1565c0}
+.tag-pending{background:#fff3e0;color:var(--orange)}
+.tag-done{background:#e6f4ea;color:var(--green)}
+.tag-gray{background:#eee;color:#777}
+/* Price row */
+.prow{display:flex;gap:8px;margin-top:8px}
+.pbox{flex:1;background:#f0f4ff;border-radius:8px;padding:8px 10px}
+.plbl{font-size:10px;color:#888;font-weight:700;text-transform:uppercase;margin-bottom:2px}
+.pold{font-size:11px;color:#bbb;text-decoration:line-through}
+.pnew{font-size:13px;font-weight:800;color:var(--blue)}
+.pinput{width:90px;padding:3px 7px;border:1.5px solid var(--blue);border-radius:6px;font-size:13px;font-weight:700;color:var(--blue);font-family:inherit;text-align:right}
+/* Checkbox */
+.cbwrap{display:flex;flex-direction:column;align-items:center;min-width:52px;cursor:pointer;flex-shrink:0}
+.cbwrap input{width:20px;height:20px;cursor:pointer;accent-color:var(--blue)}
+.cbwrap span{font-size:10px;margin-top:3px;font-weight:600}
+/* Stats */
+.stats{display:flex;gap:6px;margin-bottom:12px}
+.stat{flex:1;border-radius:10px;padding:9px 4px;text-align:center}
+.stat .n{font-size:20px;font-weight:800}
+.stat .t{font-size:10px;color:#555;margin-top:1px}
+/* Bottom bar */
+.bbar{position:sticky;bottom:0;background:#fff;padding:12px 16px;border-top:1px solid #eee;box-shadow:0 -4px 14px rgba(0,0,0,.06)}
+/* Overlay */
+.ov{position:fixed;inset:0;background:rgba(255,255,255,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200}
+.spin{width:42px;height:42px;border:4px solid #e3ecff;border-top:4px solid var(--blue);border-radius:50%;animation:sp .8s linear infinite;margin-bottom:14px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.lmsg{font-size:14px;color:#555;text-align:center;max-width:280px;line-height:1.5;white-space:pre-line}
+/* Nav */
+.bk{background:none;border:none;font-size:22px;cursor:pointer;padding:0;margin-right:8px;line-height:1}
+.sth{display:flex;align-items:center;margin-bottom:14px}
+.sth h2{font-size:16px;font-weight:800}
+/* Upload zone */
+.upz{border:2.5px dashed #93b8ff;border-radius:14px;padding:36px 20px;text-align:center;cursor:pointer;background:#f5f8ff;transition:all .2s}
+.upz:hover{background:#eaf0ff;border-color:var(--blue)}
+.upz .ic{font-size:48px;margin-bottom:10px}
+.upz h3{font-size:15px;color:var(--blue);font-weight:700;margin-bottom:4px}
+.upz p{font-size:12px;color:#888}
+.pimg{width:100%;border-radius:11px;max-height:280px;object-fit:contain;background:#f8f9fa}
+.ia{display:flex;gap:8px;margin-top:10px}
+/* Search */
+.srow{display:flex;gap:6px;margin-bottom:6px}
+.sinput{flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;outline:none}
+.sinput:focus{border-color:var(--blue)}
+/* Results */
+.ri{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:5px;background:#fff}
+.ri-name{font-size:12px;font-weight:700;margin-bottom:2px;line-height:1.3}
+.ri-meta{font-size:11px;color:#888;margin-bottom:5px}
+.bc{display:inline-block;background:#f0f4ff;color:var(--blue);padding:1px 6px;border-radius:4px;font-family:monospace;font-size:10px;margin-left:4px}
+/* Section title */
+.sec{font-size:12px;font-weight:800;color:var(--blue);margin:14px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--border)}
+.tip{font-size:11px;color:#999;margin-top:3px;line-height:1.4}
+/* Badge */
+.badge{display:flex;align-items:center;gap:6px;border-radius:8px;padding:7px 12px;margin-bottom:12px;font-size:12px;font-weight:600}
+.badge-green{background:#e6f4ea;border:1px solid #b7dfbf;color:var(--green)}
+/* Progress */
+.progress{background:#e3ecff;border-radius:20px;height:6px;margin-bottom:12px}
+.progress-bar{background:var(--blue);border-radius:20px;height:6px;transition:width .3s}
+/* Mapping table */
+.mtbl{width:100%;border-collapse:collapse;font-size:12px}
+.mtbl th{background:#f0f4ff;color:var(--blue);font-weight:700;padding:7px 8px;text-align:left;border-bottom:2px solid var(--border)}
+.mtbl td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.mtbl tr:hover td{background:#f8f9ff}
+.tabs{display:flex;border-bottom:2px solid var(--border);margin-bottom:14px}
+.tab{padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="hdr">
+  <h1>🏪 Cập nhật giá NCC → KiotViet</h1>
+  <p id="hSub">Mapping database + Auto-learn</p>
+</div>
+
+<!-- OVERLAY -->
+<div class="ov" id="ov" style="display:none">
+  <div class="spin"></div>
+  <div class="lmsg" id="lmsg">Đang xử lý...</div>
+</div>
+
+<!-- ===== SETTINGS ===== -->
+<div class="screen active" id="s-cfg">
+  <div style="text-align:center;margin:14px 0 18px">
+    <div style="font-size:44px">⚙️</div>
+    <div style="font-size:16px;font-weight:800;margin-top:7px">Cài đặt kết nối</div>
+    <div style="font-size:11px;color:#888;margin-top:3px">Điền một lần, lưu vĩnh viễn</div>
+  </div>
+  <div id="err-cfg" class="alert alert-err" style="display:none"></div>
+
+  <div class="sec">🤖 Claude AI (đọc ảnh đơn NCC)</div>
+  <div class="fld">
+    <div class="lbl">Claude API Key</div>
+    <input type="password" id="cKey" placeholder="sk-ant-api03-...">
+    <div class="tip">Lấy tại console.anthropic.com → API Keys</div>
+  </div>
+
+  <div class="sec">🏪 KiotViet</div>
+  <div class="fld"><div class="lbl">Client ID</div><input type="text" id="cId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+  <div class="fld"><div class="lbl">Mã bảo mật</div><input type="password" id="cSec"></div>
+  <div class="fld"><div class="lbl">Tên gian hàng</div><input type="text" id="cRet" value="0965333560"></div>
+  <div class="fld">
+    <div class="lbl">Vercel Proxy URL</div>
+    <input type="text" id="cPx" value="https://kiotviet-proxy.vercel.app">
+    <div class="tip">Server cầu nối — không thay đổi nếu không cần</div>
+  </div>
+
+  <button class="btn btn-secondary" onclick="testProxy()" style="margin-bottom:6px">🔍 Kiểm tra proxy trước</button>
+  <button class="btn btn-primary" onclick="connect()">🔗 Kết nối & Bắt đầu →</button>
+  <div class="alert alert-info" style="font-size:12px">💡 Thông tin lưu trên máy tính của bạn — bảo mật tuyệt đối.</div>
+</div>
+
+<!-- ===== MAIN MENU ===== -->
+<div class="screen" id="s-menu">
+  <div class="badge badge-green">✅ KiotViet: <strong id="retBadge"></strong></div>
+
+  <div class="tabs">
+    <div class="tab active" id="tab-up" onclick="switchTab('up')">📸 Nhập đơn</div>
+    <div class="tab" id="tab-map" onclick="switchTab('map')">🗂️ Bảng tham chiếu (<span id="mapCount">0</span>)</div>
+  </div>
+
+  <!-- Tab: Upload -->
+  <div id="tab-up-content">
+    <div id="err-up" class="alert alert-err" style="display:none"></div>
+    <input type="file" id="fi" accept="image/*" style="display:none" onchange="onImg(event)">
+    <div id="upz" class="upz" onclick="document.getElementById('fi').click()">
+      <div class="ic">📷</div>
+      <h3>Chọn ảnh đơn nhập hàng NCC</h3>
+      <p>Nhấn để chọn ảnh từ máy tính</p>
+    </div>
+    <div id="iw" style="display:none">
+      <img id="ip" class="pimg">
+      <div class="ia">
+        <button class="btn btn-secondary" onclick="resetImg()" style="flex:1;margin:0">🔄 Chọn lại</button>
+        <button class="btn btn-primary" onclick="process()" style="flex:2;margin:0">✨ Xử lý đơn này →</button>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:11px 13px;background:#f8f9fa;border-radius:10px;font-size:12px;color:#555;line-height:1.7">
+      <strong>⚡ Quy trình:</strong><br>
+      1. Upload ảnh đơn NCC → AI đọc tên + mã + giá<br>
+      2. Mã NCC có trong bảng tham chiếu → tự động khớp ✅<br>
+      3. Mã NCC chưa có → vào màn hình "Chờ duyệt" để bạn liên kết<br>
+      4. Xác nhận → lưu vào bảng tham chiếu → lần sau tự động 100%
+    </div>
+  </div>
+
+  <!-- Tab: Mapping -->
+  <div id="tab-map-content" style="display:none">
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn-sm btn-blue" onclick="exportMapping()">📥 Xuất Excel</button>
+      <label class="btn-sm btn-gray" style="cursor:pointer">
+        📤 Nhập Excel
+        <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none" onchange="importMapping(event)">
+      </label>
+      <button class="btn-sm" style="background:#fce8e6;color:var(--red)" onclick="clearMapping()">🗑️ Xóa tất cả</button>
+    </div>
+    <div id="mapTable">
+      <div style="font-size:13px;color:#888;text-align:center;padding:20px">Chưa có dữ liệu tham chiếu nào.<br>Hãy xử lý đơn NCC đầu tiên để bắt đầu!</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== APPROVAL UI ===== -->
+<div class="screen" id="s-approve">
+  <div class="sth">
+    <button class="bk" onclick="go('menu')">←</button>
+    <h2>⏳ Chờ duyệt liên kết</h2>
+  </div>
+
+  <div class="alert alert-warn" style="margin-bottom:10px">
+    ⚠️ <strong>Các sản phẩm dưới đây chưa có trong bảng tham chiếu.</strong><br>
+    Tìm và xác nhận liên kết để app tự động lần sau.
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:700">Đã duyệt: <span id="approvedCount" style="color:var(--green)">0</span>/<span id="totalPending">0</span></div>
+    <button class="btn-sm btn-green" id="btnContinue" onclick="goToPreview()" style="display:none">✅ Tiếp tục →</button>
+  </div>
+  <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+
+  <div id="approveList"></div>
+</div>
+
+<!-- ===== PREVIEW ===== -->
+<div class="screen" id="s-pre">
+  <div class="sth"><button class="bk" onclick="go('approve')">←</button><h2>📋 Xác nhận thay đổi giá</h2></div>
+  <div class="stats" id="stats"></div>
+  <div id="preList"></div>
+  <div style="height:80px"></div>
+  <div class="bbar">
+    <button class="btn btn-primary" id="btnUpdate" onclick="doUpdate()" style="margin:0">✅ Cập nhật vào KiotViet</button>
+  </div>
+</div>
+
+<!-- ===== DONE ===== -->
+<div class="screen" id="s-done">
+  <div style="text-align:center;padding:40px 20px">
+    <div style="font-size:64px;margin-bottom:14px">🎉</div>
+    <div id="dTitle" style="font-size:22px;font-weight:800;color:var(--green);margin-bottom:8px">Xong!</div>
+    <div id="dSub" style="font-size:13px;color:#555;margin-bottom:24px;line-height:1.7"></div>
+    <button class="btn btn-primary" onclick="nextInvoice()" style="max-width:260px;margin:0 auto">📸 Xử lý đơn tiếp theo</button>
+    <button class="btn btn-secondary" onclick="go('cfg')" style="max-width:260px;margin:6px auto 0">⚙️ Cài đặt</button>
+  </div>
+</div>
+</div><!-- .app -->
+
+<script>
+// ===== CONFIG =====
+var C = { token:'', ret:'', cKey:'', px:'https://kiotviet-proxy.vercel.app', imgBase64:'', imgType:'image/jpeg' };
+var allResults = [];    // all items from invoice
+var pendingItems = [];  // items needing approval
+var srchCache = {};     // temp search results
+
+// ===== MAPPING DATABASE =====
+var DB = {
+  _d: {},
+  load: function() { try { this._d = JSON.parse(localStorage.getItem('kv_ncc_map')||'{}'); } catch(e) { this._d = {}; } return this; },
+  save: function() { localStorage.setItem('kv_ncc_map', JSON.stringify(this._d)); },
+  get: function(code) { return this._d[String(code||'').trim()] || null; },
+  set: function(nccCode, nccName, prod) {
+    var key = String(nccCode||'').trim();
+    if (!key) return;
+    this._d[key] = {
+      nccCode: key, nccName: nccName||'',
+      kiotvietId: prod.id,
+      kiotvietCode: prod.barCode||prod.code||'',
+      kiotvietName: prod.name,
+      kiotvietCategory: prod.categoryName||'',
+      confirmedAt: new Date().toISOString().substring(0,10)
+    };
+    this.save();
+    this._refresh();
+  },
+  remove: function(code) { delete this._d[String(code||'').trim()]; this.save(); this._refresh(); },
+  count: function() { return Object.keys(this._d).length; },
+  toRows: function() {
+    return Object.values(this._d).map(function(r) {
+      return { 'Mã NCC': r.nccCode, 'Tên NCC': r.nccName, 'Mã KiotViet': r.kiotvietCode, 'Tên KiotViet': r.kiotvietName, 'Nhóm hàng': r.kiotvietCategory, 'Ngày xác nhận': r.confirmedAt };
+    });
+  },
+  _refresh: function() {
+    document.getElementById('mapCount').textContent = this.count();
+    renderMapTable();
+  }
+};
+
+// ===== UTILS =====
+function go(s) { document.querySelectorAll('.screen').forEach(function(x){x.classList.remove('active');}); document.getElementById('s-'+s).classList.add('active'); }
+function ld(msg) { document.getElementById('lmsg').textContent = msg||''; document.getElementById('ov').style.display = 'flex'; }
+function ul() { document.getElementById('ov').style.display = 'none'; }
+function se(id, msg) { var e=document.getElementById(id); e.textContent=msg; e.style.display='block'; }
+function ce(id) { document.getElementById(id).style.display='none'; }
+function vnd(n) { return n ? Number(n).toLocaleString('vi-VN')+'đ' : '—'; }
+function switchTab(t) {
+  ['up','map'].forEach(function(x) {
+    document.getElementById('tab-'+x).classList.toggle('active', x===t);
+    document.getElementById('tab-'+x+'-content').style.display = x===t ? 'block' : 'none';
+  });
+}
+
+// ===== MARKUP =====
+function calcSell(cost, name, cat, oldSell) {
+  var t = ((name||'')+(cat||'')).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  var m = 0.20, kem = false;
+  if (/KEM/.test(t)) { m=0.25; kem=true; }
+  else if (/SUA|MILK|MEADOW/.test(t)) m=0.08;
+  else if (/\bMI\b|PHO|CHAO/.test(t)) m=0.12;
+  else if (/BOT GIAT|NUOC GIAT|BIM|PAMPERS/.test(t)) m=0.10;
+  else if (/DAU GOI|SUA TAM|PANTENE|SUNSILK|DOVE|NIVEA|GIA VI|NUOC MAM|TRA |CA PHE|GILLETTE|LUOI/.test(t)) m=0.18;
+  else if (/BANH|KEO|SNACK|NUOC NGOT|DO UONG/.test(t)) m=0.25;
+  else if (/HAT|PISTACH|DIEU/.test(t)) m=0.30;
+  else if (/VAN PHONG|HOC SINH/.test(t)) m=0.40;
+  if (kem && oldSell > 10000) return Math.round((cost+2000)/1000)*1000;
+  var raw = cost*(1+m);
+  if (raw>=100000) return Math.round(raw/5000)*5000;
+  if (raw>=10000) return Math.round(raw/1000)*1000;
+  return Math.round(raw/500)*500;
+}
+
+// ===== PROXY =====
+function px(url, opts) {
+  var base = (C.px||'').replace(/\/$/,'');
+  return fetch(base+'/api/proxy?url='+encodeURIComponent(url), opts||{});
+}
+
+// ===== CONNECT =====
+function testProxy() {
+  var ppx = document.getElementById('cPx').value.trim();
+  if (!ppx) { se('err-cfg','Vui lòng nhập Vercel Proxy URL'); return; }
+  ce('err-cfg');
+  ld('Đang kiểm tra proxy...');
+  var testUrl = ppx.replace(/\/$/,'')+'/api/proxy?url='+encodeURIComponent('https://id.kiotviet.vn/.well-known/openid-configuration');
+  fetch(testUrl).then(function(r) {
+    ul();
+    if (r.ok || r.status===400) {
+      se('err-cfg','✅ Proxy hoạt động tốt! Bây giờ nhấn "Kết nối & Bắt đầu".');
+      document.getElementById('err-cfg').style.background='#e6f4ea';
+      document.getElementById('err-cfg').style.color='#1e8e3e';
+    } else {
+      se('err-cfg','⚠️ Proxy phản hồi status '+r.status+' — có thể vẫn dùng được.');
+    }
+  }).catch(function(e) {
+    ul();
+    se('err-cfg','❌ Không kết nối được proxy: '+e.message+'\n\nKiểm tra lại:\n• URL proxy có đúng không?\n• Vercel đã deploy thành công chưa?\n• Thử mở URL này trên trình duyệt:\n'+ppx+'/api/proxy?url=https://example.com');
+  });
+}
+
+function connect() {
+  var id=document.getElementById('cId').value.trim(), sec=document.getElementById('cSec').value.trim(),
+      ret=document.getElementById('cRet').value.trim(), ck=document.getElementById('cKey').value.trim(),
+      ppx=document.getElementById('cPx').value.trim();
+  if (!id||!sec||!ret||!ck) { se('err-cfg','Vui lòng điền đủ tất cả thông tin'); return; }
+  ce('err-cfg');
+  C.ret=ret; C.cKey=ck; C.px=ppx;
+  ld('Đang kết nối KiotViet...');
+  px('https://id.kiotviet.vn/connect/token', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'scopes=PublicApi.Access&grant_type=client_credentials&client_id='+encodeURIComponent(id)+'&client_secret='+encodeURIComponent(sec)
+  }).then(function(r) {
+    if (!r.ok) return r.text().then(function(t){throw new Error('KiotViet lỗi '+r.status+': '+t.substring(0,100));});
+    return r.json();
+  }).then(function(d) {
+    if (!d.access_token) throw new Error('Không lấy được token — kiểm tra Client ID và Mã bảo mật');
+    C.token = d.access_token;
+    document.getElementById('retBadge').textContent = ret;
+    DB.load(); DB._refresh();
+    try { localStorage.setItem('kvcfg', JSON.stringify({id,sec,ret,ck,ppx})); } catch(e) {}
+    ul(); go('menu');
+  }).catch(function(e) {
+    ul();
+    var msg = e.message;
+    if (msg==='Failed to fetch'||msg.includes('NetworkError')||msg.includes('network')) {
+      msg = 'Không kết nối được proxy Vercel.\n\n👉 Hãy:\n1. Kiểm tra Vercel Proxy URL có đúng không\n2. Nhấn "Kiểm tra proxy" để test\n3. Nếu vẫn lỗi: vào GitHub cập nhật lại proxy.js rồi chờ Vercel deploy';
+    }
+    se('err-cfg','❌ '+msg);
+  });
+}
+
+// ===== IMAGE =====
+function onImg(e) {
+  var f=e.target.files[0]; if(!f)return;
+  C.imgType=f.type||'image/jpeg';
+  document.getElementById('ip').src=URL.createObjectURL(f);
+  document.getElementById('upz').style.display='none';
+  document.getElementById('iw').style.display='block';
+  var rd=new FileReader();
+  rd.onload=function(ev){C.imgBase64=ev.target.result.split(',')[1];};
+  rd.readAsDataURL(f);
+}
+function resetImg() {
+  C.imgBase64='';document.getElementById('fi').value='';
+  document.getElementById('upz').style.display='block';
+  document.getElementById('iw').style.display='none';
+}
+
+// ===== KIOTVIET API =====
+function kvHeaders() { return {'Retailer':C.ret,'Authorization':'Bearer '+C.token}; }
+function kByCode(code) {
+  return px('https://public.kiotapi.com/products/code/'+encodeURIComponent(code)+'?includeInventory=true', {headers:kvHeaders()})
+    .then(function(r){return r.ok?r.json():null;})
+    .then(function(d){return (d&&d.id)?d:null;})
+    .catch(function(){return null;});
+}
+function kByName(name, pageSize) {
+  return px('https://public.kiotapi.com/products?name='+encodeURIComponent(name)+'&pageSize='+(pageSize||8)+'&includeInventory=true', {headers:kvHeaders()})
+    .then(function(r){return r.ok?r.json():{data:[]};})
+    .then(function(d){return d.data||[];})
+    .catch(function(){return[];});
+}
+
+// ===== PROCESS =====
+function process() {
+  if (!C.imgBase64) { se('err-up','Vui lòng chọn ảnh'); return; }
+  ce('err-up'); srchCache = {};
+  ld('🤖 AI đang đọc đơn NCC...');
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':C.cKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-6', max_tokens:2000,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:C.imgType,data:C.imgBase64}},
+        {type:'text',text:'Đây là ảnh hóa đơn/đơn nhập hàng NCC, có thể bị xoay. Hãy đọc đúng chiều.\n\nNHIỆM VỤ: Đọc BẢNG HÀNG HÓA (cột Mã hàng, Tên hàng, Đơn giá).\n\nTrả về JSON (chỉ JSON, không giải thích):\n{"items":[{"name":"tên SP đầy đủ","code":"mã hàng NCC","unit_price":12345}]}\n\nQUY TẮC:\n✅ Tên SP từ cột "Tên hàng"/"Miêu tả"\n✅ Code: mã hàng NCC (số 6-10 chữ số trong bảng)\n✅ Giá: "Giá Bán"/"Giá lẻ"/"Giá lẻ (Sau KM,CK)" — giá 1 đơn vị\n❌ KHÔNG lấy tên KH, địa chỉ, nhà cung cấp, tiêu đề\n❌ KHÔNG lấy dòng tổng/hoàn thuế\nChỉ JSON.'}
+      ]}]
+    })
+  }).then(function(cr) {
+    if (!cr.ok) return cr.json().then(function(e){throw new Error(e.error&&e.error.message?e.error.message:'Claude lỗi '+cr.status);});
+    return cr.json();
+  }).then(function(cd) {
+    var txt = (cd.content||[]).map(function(c){return c.text||'';}).join('');
+
+    // Robust JSON extraction
+    var parsed = null;
+    var start = txt.indexOf('{');
+    while (start !== -1) {
+      var depth=0,i=start,inS=false,esc=false;
+      while (i<txt.length) {
+        var c=txt[i];
+        if(esc){esc=false;}
+        else if(c==='\\'&&inS){esc=true;}
+        else if(c==='"'){inS=!inS;}
+        else if(!inS){if(c==='{')depth++;if(c==='}'){depth--;if(depth===0){try{parsed=JSON.parse(txt.slice(start,i+1));break;}catch(e2){break;}}}}
+        i++;
+      }
+      if(parsed)break;
+      start=txt.indexOf('{',start+1);
+    }
+    if (!parsed) throw new Error('Không đọc được JSON từ AI');
+
+    var items = parsed.items||[];
+    if (!items.length) throw new Error('Không tìm thấy sản phẩm nào trong ảnh');
+
+    allResults = [];
+    pendingItems = [];
+    var promises = items.map(function(item, idx) {
+      ld('Kiểm tra bảng tham chiếu SP '+(idx+1)+'/'+items.length+'...');
+      var code = String(item.code||'').trim();
+      var mapped = code ? DB.get(code) : null;
+      if (mapped) {
+        // Found in mapping DB → auto match
+        var res = {
+          idx:idx, inv:item, code:code, prod:mapped, src:'mapped',
+          newCost:item.unit_price,
+          newSell:calcSell(item.unit_price,mapped.kiotvietName,mapped.kiotvietCategory,0),
+          oldSell:0, oldCost:0, branchId:null, confirmed:true
+        };
+        allResults.push(res);
+        // Fetch live price data
+        return kByCode(mapped.kiotvietCode||String(mapped.kiotvietId)).then(function(live) {
+          if (live) { res.prod.basePrice=live.basePrice; res.oldSell=live.basePrice; res.oldCost=(live.inventories&&live.inventories[0])?live.inventories[0].cost:0; res.branchId=(live.inventories&&live.inventories[0])?live.inventories[0].branchId:null; res.prod.id=live.id; res.newSell=calcSell(item.unit_price,live.name,live.categoryName,live.basePrice); }
+        }).catch(function(){});
+      } else {
+        // Not in mapping → needs approval
+        var res = { idx:idx, inv:item, code:code, prod:null, src:'pending', newCost:item.unit_price, newSell:0, oldSell:0, oldCost:0, branchId:null, confirmed:false };
+        allResults.push(res);
+        pendingItems.push(res);
+        return Promise.resolve();
+      }
+    });
+
+    return Promise.all(promises);
+  }).then(function() {
+    ul();
+    if (pendingItems.length > 0) {
+      renderApproval();
+      go('approve');
+    } else {
+      renderPreview();
+      go('pre');
+    }
+  }).catch(function(e) { ul(); se('err-up','❌ '+e.message); });
+}
+
+// ===== APPROVAL UI =====
+function renderApproval() {
+  var done = pendingItems.filter(function(r){return r.src==='approved';}).length;
+  var total = pendingItems.length;
+  document.getElementById('approvedCount').textContent = done;
+  document.getElementById('totalPending').textContent = total;
+  document.getElementById('progressBar').style.width = (total>0?(done/total*100):0)+'%';
+  document.getElementById('btnContinue').style.display = (done===total)?'block':'none';
+
+  var html = '';
+  pendingItems.forEach(function(r, pi) {
+    if (r.src === 'approved') {
+      html += '<div class="card card-done">'
+        + '<span class="tag tag-done">✅ Đã liên kết</span>'
+        + '<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+r.prod.kiotvietName+'</div>'
+        + '<div style="font-size:11px;color:#888">NCC: <code>'+r.inv.name+'</code> | Giá nhập: <b>'+vnd(r.inv.unit_price)+'</b></div>'
+        + '<div style="font-size:11px;color:var(--green);margin-top:4px">🧠 Đã lưu vào bảng tham chiếu (mã NCC: <code>'+r.code+'</code>)</div>'
+        + '</div>';
+    } else {
+      html += '<div class="card card-pending" id="pc'+pi+'">'
+        + '<span class="tag tag-pending">⏳ Chờ liên kết</span>'
+        + '<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+r.inv.name+'</div>'
+        + '<div style="font-size:11px;color:#888;margin-bottom:10px">Mã NCC: <code>'+r.code+'</code> | Giá nhập: <b>'+vnd(r.inv.unit_price)+'</b></div>'
+
+        + '<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">🔍 Tìm sản phẩm trong KiotViet:</div>'
+
+        + '<div class="srow">'
+          + '<input class="sinput" type="text" id="mn'+pi+'" placeholder="Tên tắt... (VD: merino teen)" onkeydown="if(event.key===\'Enter\')srchName('+pi+')">'
+          + '<button class="btn-sm btn-blue" onclick="srchName('+pi+')">🔤 Tên</button>'
+        + '</div>'
+        + '<div class="srow">'
+          + '<input class="sinput" type="text" id="mb'+pi+'" placeholder="Mã barcode/code KiotViet..." style="font-family:monospace" onkeydown="if(event.key===\'Enter\')srchCode('+pi+')">'
+          + '<button class="btn-sm btn-purple" onclick="srchCode('+pi+')">📦 Mã</button>'
+        + '</div>'
+        + '<div id="sr'+pi+'"></div>'
+
+        + '<div style="margin-top:8px;padding:8px;background:#f8f9fa;border-radius:7px;font-size:11px;color:#888">'
+          + '💡 Sau khi xác nhận, cặp mã này sẽ được lưu vĩnh viễn — lần sau tự động!'
+        + '</div>'
+        + '</div>';
+    }
+  });
+  document.getElementById('approveList').innerHTML = html;
+}
+
+function srchName(pi) {
+  var q = (document.getElementById('mn'+pi)||{value:''}).value.trim();
+  if (!q) return;
+  var el = document.getElementById('sr'+pi);
+  el.innerHTML = '<div style="font-size:12px;color:#888;padding:6px 0">Đang tìm...</div>';
+  var words = q.split(/\s+/).filter(function(w){return w.length>1;});
+  var seen = new Set(); var list = [];
+
+  var queries = [q].concat(words);
+  var chain = Promise.resolve();
+  queries.forEach(function(qry) {
+    chain = chain.then(function() {
+      if (list.length >= 8) return;
+      return kByName(qry, 8).then(function(rs) {
+        rs.forEach(function(p){ if(!seen.has(p.id)){seen.add(p.id);list.push(p);} });
+      });
+    });
+  });
+  chain.then(function() {
+    srchCache['n'+pi] = list;
+    if (!list.length) { el.innerHTML='<div style="font-size:12px;color:var(--red);padding:8px;background:#fce8e6;border-radius:8px">Không tìm thấy — thử từ ngắn hơn</div>'; return; }
+    renderSearchResults(el, list, pi);
+  });
+}
+
+function srchCode(pi) {
+  var code = (document.getElementById('mb'+pi)||{value:''}).value.trim();
+  if (!code) return;
+  var el = document.getElementById('sr'+pi);
+  el.innerHTML = '<div style="font-size:12px;color:#888;padding:6px 0">Đang tìm barcode...</div>';
+  kByCode(code).then(function(p) {
+    if (!p) { el.innerHTML='<div style="font-size:12px;color:var(--red);padding:8px;background:#fce8e6;border-radius:8px">Không tìm thấy mã này</div>'; return; }
+    srchCache['c'+pi] = [p];
+    el.innerHTML = '<div style="border:1px solid #ce93d8;border-radius:8px;padding:10px;background:#f3e5f5">'
+      + '<div style="font-size:10px;font-weight:700;color:var(--purple);margin-bottom:4px">✅ KHỚP CHÍNH XÁC</div>'
+      + '<div class="ri-name">'+p.name+'<span class="bc" style="background:#ede7f6;color:var(--purple)">'+(p.barCode||p.code||code)+'</span></div>'
+      + '<div class="ri-meta">📦 '+(p.categoryName||'')+' | Giá bán hiện tại: '+vnd(p.basePrice)+'</div>'
+      + '<button onclick="confirmLink('+pi+',\'c\',0)" style="margin-top:5px;padding:6px 14px;background:var(--purple);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">✅ Xác nhận liên kết này</button>'
+      + '</div>';
+  });
+}
+
+function renderSearchResults(el, list, pi) {
+  var h = '<div style="font-size:11px;color:#888;margin-bottom:5px">'+list.length+' kết quả — chọn đúng sản phẩm:</div>';
+  list.forEach(function(p, j) {
+    var bc = p.barCode||p.barcode||p.code||'';
+    h += '<div class="ri">'
+      + '<div class="ri-name">'+p.name+(bc?'<span class="bc">'+bc+'</span>':'')+'</div>'
+      + '<div class="ri-meta">📦 '+(p.categoryName||'')+' | Giá bán: '+vnd(p.basePrice)+'</div>'
+      + '<button onclick="confirmLink('+pi+',\'n\','+j+')" style="padding:4px 11px;background:var(--green);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">✅ Xác nhận liên kết</button>'
+      + '</div>';
+  });
+  el.innerHTML = h;
+}
+
+function confirmLink(pi, type, j) {
+  var prod = srchCache[type+pi][j];
+  if (!prod) return;
+  var r = pendingItems[pi];
+
+  // Save to mapping DB
+  DB.set(r.code, r.inv.name, prod);
+
+  // Update result
+  r.prod = { id:prod.id, kiotvietId:prod.id, kiotvietName:prod.name, kiotvietCode:prod.barCode||prod.code||'', kiotvietCategory:prod.categoryName||'', basePrice:prod.basePrice };
+  r.oldSell = prod.basePrice||0;
+  r.oldCost = (prod.inventories&&prod.inventories[0]) ? prod.inventories[0].cost : 0;
+  r.branchId = (prod.inventories&&prod.inventories[0]) ? prod.inventories[0].branchId : null;
+  r.newSell = calcSell(r.newCost, prod.name, prod.categoryName, r.oldSell);
+  r.src = 'approved';
+  r.confirmed = true;
+
+  renderApproval();
+}
+
+function goToPreview() {
+  renderPreview();
+  go('pre');
+}
+
+// ===== PREVIEW =====
+function renderPreview() {
+  var nMapped = allResults.filter(function(r){return r.src==='mapped';}).length;
+  var nApproved = allResults.filter(function(r){return r.src==='approved';}).length;
+  document.getElementById('stats').innerHTML =
+    '<div class="stat" style="background:#e3f2fd"><div class="n" style="color:#1565c0">'+nMapped+'</div><div class="t">🗂️ Từ bảng</div></div>'+
+    '<div class="stat" style="background:#e6f4ea"><div class="n" style="color:var(--green)">'+nApproved+'</div><div class="t">✅ Vừa duyệt</div></div>'+
+    '<div class="stat" style="background:#e8f0fe"><div class="n" style="color:var(--blue)">'+allResults.length+'</div><div class="t">📦 Tổng SP</div></div>';
+
+  var html = '';
+  allResults.forEach(function(r, i) {
+    if (!r.prod) return;
+    var name = r.prod.kiotvietName||r.prod.name||'';
+    var cat = r.prod.kiotvietCategory||r.prod.categoryName||'';
+    var tag = r.src==='mapped'
+      ? '<span class="tag tag-mem">🗂️ Từ bảng tham chiếu</span>'
+      : '<span class="tag tag-auto">✅ Vừa xác nhận</span>';
+
+    html += '<div class="card card-mem">'
+      + tag
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+        + '<div style="flex:1">'
+          + '<div style="font-size:13px;font-weight:700;line-height:1.3;margin-bottom:3px">'+name+'</div>'
+          + '<div style="font-size:11px;color:#888">📦 '+cat+' | Giá nhập: <b>'+vnd(r.inv.unit_price)+'</b></div>'
+        + '</div>'
+        + '<label class="cbwrap"><input type="checkbox" '+(r.confirmed?'checked':'')+' onchange="tog('+i+')">'
+          + '<span id="cb'+i+'" style="color:'+(r.confirmed?'var(--green)':'#999')+'">'+(r.confirmed?'Cập nhật':'Bỏ qua')+'</span></label>'
+      + '</div>'
+      + '<div class="prow">'
+        + '<div class="pbox"><div class="plbl">Giá vốn</div>'+(r.oldCost?'<div class="pold">'+vnd(r.oldCost)+'</div>':'')+'<div class="pnew">'+vnd(r.newCost)+'</div></div>'
+        + '<div class="pbox"><div class="plbl">Giá bán</div>'+(r.oldSell?'<div class="pold">'+vnd(r.oldSell)+'</div>':'')
+          + '<div style="display:flex;align-items:center;gap:4px;margin-top:2px"><input class="pinput" type="number" value="'+r.newSell+'" onchange="eSell('+i+',this.value)"><span style="font-size:11px;color:#888">đ</span></div></div>'
+      + '</div>'
+      + '</div>';
+  });
+  document.getElementById('preList').innerHTML = html;
+  updateBtn();
+}
+
+function tog(i) {
+  allResults[i].confirmed = !allResults[i].confirmed;
+  var cb=document.getElementById('cb'+i);
+  if(cb){cb.textContent=allResults[i].confirmed?'Cập nhật':'Bỏ qua';cb.style.color=allResults[i].confirmed?'var(--green)':'#999';}
+  updateBtn();
+}
+function eSell(i,v){allResults[i].newSell=parseInt(v)||0;}
+function updateBtn() {
+  var n = allResults.filter(function(r){return r.confirmed&&r.prod;}).length;
+  var b = document.getElementById('btnUpdate');
+  b.disabled = n===0;
+  b.textContent = '✅ Cập nhật '+n+' sản phẩm vào KiotViet';
+}
+
+// ===== UPDATE =====
+function doUpdate() {
+  var toUp = allResults.filter(function(r){return r.confirmed&&r.prod;});
+  ld('Đang cập nhật giá vào KiotViet...');
+  var ok=0, fail=0;
+  var chain = Promise.resolve();
+  toUp.forEach(function(r) {
+    chain = chain.then(function() {
+      ld('Cập nhật:\n'+(r.prod.kiotvietName||r.prod.name||'').substring(0,35)+'...');
+      var body = { basePrice: r.newSell };
+      if (r.newCost && r.branchId) body.inventories = [{branchId:r.branchId, cost:r.newCost}];
+      var pid = r.prod.kiotvietId||r.prod.id;
+      return px('https://public.kiotapi.com/products/'+pid, {
+        method:'PUT',
+        headers:Object.assign({'Content-Type':'application/json'},kvHeaders()),
+        body:JSON.stringify(body)
+      }).then(function(resp){if(resp.ok)ok++;else fail++;}).catch(function(){fail++;});
+    });
+  });
+  chain.then(function() {
+    ul();
+    document.getElementById('dTitle').textContent = ok>0 ? '🎉 Xong!' : '❌ Có lỗi!';
+    document.getElementById('dSub').innerHTML =
+      (ok>0?'<div style="color:var(--green);margin-bottom:6px">✅ <b>'+ok+'</b> sản phẩm đã cập nhật thành công</div>':'')
+      +(fail>0?'<div style="color:var(--red)">❌ '+fail+' sản phẩm thất bại</div>':'');
+    go('done');
+  });
+}
+
+// ===== MAPPING TABLE =====
+function renderMapTable() {
+  var rows = DB.toRows();
+  if (!rows.length) {
+    document.getElementById('mapTable').innerHTML='<div style="font-size:13px;color:#888;text-align:center;padding:20px">Chưa có dữ liệu tham chiếu nào.<br>Hãy xử lý đơn NCC đầu tiên!</div>';
+    return;
+  }
+  var h = '<table class="mtbl"><tr><th>Mã NCC</th><th>Tên NCC</th><th>KiotViet</th><th>Mã KV</th><th></th></tr>';
+  Object.values(DB._d).forEach(function(r) {
+    h += '<tr>'
+      + '<td><code>'+r.nccCode+'</code></td>'
+      + '<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+r.nccName+'">'+r.nccName+'</td>'
+      + '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+r.kiotvietName+'">'+r.kiotvietName+'</td>'
+      + '<td><span class="bc">'+r.kiotvietCode+'</span></td>'
+      + '<td><button onclick="DB.remove(\''+r.nccCode+'\')" style="padding:2px 7px;background:#fce8e6;color:var(--red);border:none;border-radius:4px;cursor:pointer;font-size:11px">✕</button></td>'
+      + '</tr>';
+  });
+  h += '</table>';
+  document.getElementById('mapTable').innerHTML = h;
+}
+
+// ===== EXCEL IMPORT/EXPORT =====
+function exportMapping() {
+  var rows = DB.toRows();
+  if (!rows.length) { alert('Chưa có dữ liệu để xuất!'); return; }
+  var ws = XLSX.utils.json_to_sheet(rows);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bang Tham Chieu');
+  XLSX.writeFile(wb, 'BangThamChieu_NCC_KiotViet.xlsx');
+}
+
+function importMapping(e) {
+  var file = e.target.files[0]; if (!file) return;
+  ld('Đang nhập bảng tham chiếu...');
+  var rd = new FileReader();
+  rd.onload = function(ev) {
+    try {
+      var wb = XLSX.read(ev.target.result, {type:'binary'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws);
+      if (!rows.length) { ul(); alert('File Excel không có dữ liệu!'); return; }
+
+      var promises = rows.map(function(row) {
+        var nccCode = String(row['Mã NCC']||'').trim();
+        var kvCode = String(row['Mã KiotViet']||'').trim();
+        var kvName = String(row['Tên KiotViet']||'').trim();
+        if (!nccCode || !kvCode) return Promise.resolve();
+        return kByCode(kvCode).then(function(prod) {
+          if (prod) {
+            DB.set(nccCode, row['Tên NCC']||'', prod);
+          } else if (kvName) {
+            // Create a minimal entry without live lookup
+            DB._d[nccCode] = { nccCode, nccName:row['Tên NCC']||'', kiotvietId:0, kiotvietCode:kvCode, kiotvietName:kvName, kiotvietCategory:row['Nhóm hàng']||'', confirmedAt:new Date().toISOString().substring(0,10) };
+            DB.save();
+          }
+        }).catch(function(){});
+      });
+
+      Promise.all(promises).then(function() {
+        DB._refresh();
+        ul();
+        alert('Đã nhập '+DB.count()+' mục vào bảng tham chiếu!');
+      });
+    } catch(err) { ul(); alert('Lỗi đọc file: '+err.message); }
+  };
+  rd.readAsBinaryString(file);
+  e.target.value = '';
+}
+
+function clearMapping() {
+  if (!confirm('Xóa toàn bộ bảng tham chiếu? Không thể hoàn tác!')) return;
+  localStorage.removeItem('kv_ncc_map');
+  DB._d = {};
+  DB._refresh();
+}
+
+// ===== MISC =====
+function nextInvoice() {
+  allResults=[]; pendingItems=[]; srchCache={};
+  C.imgBase64='';
+  document.getElementById('fi').value='';
+  document.getElementById('upz').style.display='block';
+  document.getElementById('iw').style.display='none';
+  ce('err-up');
+  go('menu');
+}
+
+// ===== INIT =====
+DB.load();
+try {
+  var sv = JSON.parse(localStorage.getItem('kvcfg')||'{}');
+  if(sv.id) document.getElementById('cId').value=sv.id;
+  if(sv.sec) document.getElementById('cSec').value=sv.sec;
+  if(sv.ret) document.getElementById('cRet').value=sv.ret;
+  if(sv.ck) document.getElementById('cKey').value=sv.ck;
+  if(sv.ppx) document.getElementById('cPx').value=sv.ppx;
+} catch(e) {}
+</script>
+</body>
+</html>
