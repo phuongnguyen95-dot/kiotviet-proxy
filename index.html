@@ -764,16 +764,17 @@ function process() {
         };
         allResults.push(res);
 
-        // Try to verify product actually exists in KiotViet
+        // STRICT: only verify by exact barcode or ID - NO name fallback to avoid wrong matches
         var livePromise;
-        if (mapped.kiotvietCode) {
-          livePromise = kByCode(mapped.kiotvietCode);
+        if (mapped.kiotvietCode && mapped.kiotvietCode.trim()) {
+          livePromise = kByCode(mapped.kiotvietCode.trim());
         } else if (mapped.kiotvietId && mapped.kiotvietId !== 0) {
           livePromise = px('https://public.kiotapi.com/products/'+mapped.kiotvietId+'?includeInventory=true',{headers:kvHeaders()})
             .then(function(r){return r.ok?r.json():null;})
             .then(function(d){return (d&&d.id)?d:null;})
             .catch(function(){return null;});
         } else {
+          // No barcode/ID → cannot verify → mark unverified
           livePromise = Promise.resolve(null);
         }
 
