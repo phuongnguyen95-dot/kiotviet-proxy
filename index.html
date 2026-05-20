@@ -1035,10 +1035,12 @@ function srchName(pi) {
     var h = '<div style="font-size:11px;color:#888;margin-bottom:5px">'+list.length+' kết quả:</div>';
     list.forEach(function(p, j) {
       var bc = p.barCode||p.code||'';
+      var unit = p.unit||'';
+      var cost = (p.inventories&&p.inventories[0]) ? p.inventories[0].cost : 0;
       h += '<div class="ri">'
-        + '<div class="ri-name">'+p.name+(bc?'<span class="bc">'+bc+'</span>':'')+'</div>'
-        + '<div class="ri-meta">📦 '+(p.categoryName||'')+' | Giá bán: '+vnd(p.basePrice)+'</div>'
-        + '<button onclick="confirmLink('+pi+',\"n\",'+j+')" style="padding:4px 11px;background:var(--green);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">✅ Xác nhận liên kết</button>'
+        + '<div class="ri-name">'+p.name+(unit?' <span style="background:#e8f0fe;color:var(--blue);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700">'+unit+'</span>':'')+(bc?'<span class="bc">'+bc+'</span>':'')+'</div>'
+        + '<div class="ri-meta">📦 '+(p.categoryName||'')+' | Giá bán: '+vnd(p.basePrice)+' | Giá vốn: '+vnd(cost)+'</div>'
+        + '<button onclick="confirmLink('+pi+',\'n\','+j+')" style="padding:4px 11px;background:var(--green);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">✅ Xác nhận liên kết</button>'
         + '</div>';
     });
     el.innerHTML = h;
@@ -1060,12 +1062,14 @@ function srchCode(pi) {
       return;
     }
     var foundBc = String(p.barCode||'').trim();
+    var unit = p.unit||'';
+    var cost = (p.inventories&&p.inventories[0]) ? p.inventories[0].cost : 0;
     srchCache['c'+pi] = [p];
     el.innerHTML = '<div style="border:1px solid #ce93d8;border-radius:8px;padding:10px;background:#f3e5f5">'
       + '<div style="font-size:10px;font-weight:700;color:var(--purple);margin-bottom:4px">✅ TÌM THẤY (barcode: '+foundBc+')</div>'
-      + '<div class="ri-name">'+p.name+'<span class="bc" style="background:#ede7f6;color:var(--purple)">'+foundBc+'</span></div>'
-      + '<div class="ri-meta">📦 '+(p.categoryName||'')+' | Giá bán: '+vnd(p.basePrice)+'</div>'
-      + '<button onclick="confirmLink('+pi+',\"c\",0)" style="margin-top:5px;padding:6px 14px;background:var(--purple);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">✅ Xác nhận liên kết</button>'
+      + '<div class="ri-name">'+p.name+(unit?' <span style="background:#ede7f6;color:var(--purple);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700">'+unit+'</span>':'')+'<span class="bc" style="background:#ede7f6;color:var(--purple)">'+foundBc+'</span></div>'
+      + '<div class="ri-meta">📦 '+(p.categoryName||'')+' | Giá bán: '+vnd(p.basePrice)+' | Giá vốn: '+vnd(cost)+'</div>'
+      + '<button onclick="confirmLink('+pi+',\'c\',0)" style="margin-top:5px;padding:6px 14px;background:var(--purple);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">✅ Xác nhận liên kết</button>'
       + '</div>';
   }).catch(function(e) {
     el.innerHTML = '<div style="font-size:12px;color:var(--red)">Lỗi: '+e.message+'</div>';
@@ -1106,7 +1110,7 @@ function confirmLink(pi, type, j) {
 
   // Update result with converted price
   r.newCost = actualCost;
-  r.prod = { id:prod.id, kiotvietId:prod.id, kiotvietName:prod.name, kiotvietCode:prod.barCode||prod.code||'', kiotvietCategory:prod.categoryName||'', basePrice:prod.basePrice };
+  r.prod = { id:prod.id, kiotvietId:prod.id, kiotvietName:prod.name, kiotvietCode:prod.barCode||prod.code||'', kiotvietCategory:prod.categoryName||'', basePrice:prod.basePrice, unit:prod.unit||'' };
   r.oldSell = prod.basePrice||0;
   r.oldCost = (prod.inventories&&prod.inventories[0]) ? prod.inventories[0].cost : 0;
   r.branchId = (prod.inventories&&prod.inventories[0]) ? prod.inventories[0].branchId : null;
@@ -1242,7 +1246,9 @@ function renderPreview() {
       + tag
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
         + '<div style="flex:1">'
-          + '<div style="font-size:13px;font-weight:700;line-height:1.3;margin-bottom:3px">'+name+'</div>'
+          + '<div style="font-size:13px;font-weight:700;line-height:1.3;margin-bottom:3px">'+name
+            +(r.prod.unit?' <span style="background:#e8f0fe;color:var(--blue);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700">'+r.prod.unit+'</span>':'')
+            +'</div>'
           + '<div style="font-size:11px;color:#888">📦 '+cat+' | Giá nhập: <b>'+vnd(r.inv.unit_price)+'</b></div>'
         + '</div>'
         + '<label class="cbwrap"><input type="checkbox" '+(r.confirmed?'checked':'')+' onchange="tog('+i+')">'
