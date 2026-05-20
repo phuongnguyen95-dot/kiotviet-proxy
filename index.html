@@ -599,7 +599,13 @@ function calcSell(cost, name, cat, oldSell) {
 
 // ===== PROXY =====
 function px(url, opts) {
-  var base = (C.px||'').replace(/\/$/,'');
+  var base = (C.px||'').replace(/\/$/,'').trim();
+  if (!base) {
+    // No proxy — call KiotViet directly
+    return fetch(url, opts||{});
+  }
+  // Remove /api/proxy suffix if user accidentally added it
+  base = base.replace(/\/api\/proxy$/,'');
   return fetch(base+'/api/proxy?url='+encodeURIComponent(url), opts||{});
 }
 
@@ -757,9 +763,12 @@ function process() {
       var mapped = code ? DB.get(code) : null;
       if (mapped) {
         // Start as unverified - must confirm with KiotViet live data
+        // Apply unit conversion factor if saved in DB
+        var convFactor = mapped.convFactor || 1;
+        var actualCost = convFactor > 1 ? Math.round(item.unit_price / convFactor) : item.unit_price;
         var res = {
           idx:idx, inv:item, code:code, prod:mapped, src:'unverified',
-          newCost:item.unit_price, newSell:0,
+          newCost:actualCost, newSell:0,
           oldSell:0, oldCost:0, branchId:null, confirmed:false
         };
         allResults.push(res);
@@ -780,6 +789,21 @@ function process() {
 
         return livePromise.then(function(live) {
           if (live && live.id) {
+            // Check name consistency — prevent wrong matches
+            var invName = (r.inv.name||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+            var liveName = (live.name||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+            var invIsKem = /KEM|ICE|CREAM/.test(invName);
+            var liveIsKem = /KEM|ICE|CREAM/.test(liveName);
+            var invIsDau = /DAU AN|DAU THUC VAT|OIL|COOKING/.test(invName);
+            var liveIsDau = /DAU AN|DAU THUC VAT|OIL|COOKING/.test(liveName);
+            var nameMismatch = (invIsKem && liveIsDau) || (invIsDau && liveIsKem);
+            if (nameMismatch) {
+              // Category mismatch — barcode is wrong
+              res.src = 'unverified';
+              res.confirmed = false;
+              res.mismatchReason = 'Barcode sai: đơn có "'+r.inv.name+'" nhưng KiotViet trả về "'+live.name+'"';
+              return;
+            }
             // ✅ VERIFIED: product exists in KiotViet
             res.src = 'verified';
             res.confirmed = true;
@@ -886,6 +910,20 @@ function renderApproval() {
         + '<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+r.inv.name+'</div>'
         + '<div style="font-size:11px;color:#888;margin-bottom:10px">Mã NCC: <code>'+r.code+'</code> | Giá nhập: <b>'+vnd(r.inv.unit_price)+'</b></div>'
 
+        + (function(){
+            var unit = (r.inv.unit||'').toLowerCase();
+            var isBulk = /thùng|hộp|lốc|két|thung|hop|loc|ket|carton|case/.test(unit);
+            return isBulk ? '<div style="background:#e8f0fe;border:1px solid #c5d7ff;border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px">'
+              + '<div style="font-weight:700;color:var(--blue);margin-bottom:6px">📦 Đơn ghi giá theo '+unit+' — cần quy đổi:</div>'
+              + '<div style="display:flex;align-items:center;gap:8px">'
+              + '<span>1 '+unit+' =</span>'
+              + '<input type="number" id="conv'+pi+'" value="24" min="1" style="width:70px;padding:5px 8px;border:1.5px solid var(--blue);border-radius:6px;font-size:14px;font-weight:700;text-align:center;font-family:inherit">'
+              + '<span>cái/chai/lon</span>'
+              + '</div>'
+              + '<div style="margin-top:6px;color:#555">Giá lẻ = '+r.inv.unit_price.toLocaleString('vi-VN')+'đ ÷ <span id="convResult'+pi+'">24</span> = <b id="unitPrice'+pi+'">'+(Math.round(r.inv.unit_price/24)).toLocaleString('vi-VN')+'đ</b></div>'
+              + '<script>document.getElementById("conv'+pi+'").oninput=function(){var v=parseInt(this.value)||1;document.getElementById("convResult'+pi+'").textContent=v;document.getElementById("unitPrice'+pi+'").textContent=Math.round('+r.inv.unit_price+'/v).toLocaleString("vi-VN")+"đ";}<\/script>'
+              + '</div>' : '';
+          }())
         + '<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">🔍 Tìm sản phẩm trong KiotViet:</div>'
 
         + '<div class="srow">'
@@ -907,6 +945,23 @@ function renderApproval() {
   document.getElementById('approveList').innerHTML = html;
 }
 
+// English-Vietnamese keyword mapping
+var EN_VI = {
+  'pistachio': 'hạt dẻ cười', 'vanilla': 'vani', 'strawberry': 'dâu',
+  'chocolate': 'socola', 'watermelon': 'dưa hấu', 'durian': 'sầu riêng',
+  'coconut': 'dừa', 'red bean': 'đậu đỏ', 'green bean': 'đậu xanh',
+  'corn': 'bắp', 'taro': 'khoai môn', 'mango': 'xoài', 'lychee': 'vải',
+  'biotin': 'biotin', 'collagen': 'collagen', 'pearl': 'ngọc trai'
+};
+
+function translateToVI(text) {
+  var result = text.toLowerCase();
+  Object.keys(EN_VI).forEach(function(en) {
+    result = result.replace(new RegExp(en, 'gi'), EN_VI[en]);
+  });
+  return result;
+}
+
 function srchName(pi) {
   var q = (document.getElementById('mn'+pi)||{value:''}).value.trim();
   if (!q) return;
@@ -915,7 +970,7 @@ function srchName(pi) {
   var words = q.split(/\s+/).filter(function(w){return w.length>1;});
   var seen = new Set(); var list = [];
 
-  var queries = [q].concat(words);
+  var queries = [searchBase, q].concat(words);
   var chain = Promise.resolve();
   queries.forEach(function(qry) {
     chain = chain.then(function() {
@@ -967,15 +1022,25 @@ function confirmLink(pi, type, j) {
   if (!prod) return;
   var r = pendingItems[pi];
 
-  // Save to mapping DB
-  DB.set(r.code, r.inv.name, prod);
+  // Check unit conversion
+  var convEl = document.getElementById('conv'+pi);
+  var convFactor = convEl ? (parseInt(convEl.value)||1) : 1;
+  var actualCost = convFactor > 1 ? Math.round(r.inv.unit_price / convFactor) : r.inv.unit_price;
 
-  // Update result
+  // Save to mapping DB with conversion info
+  DB.set(r.code, r.inv.name, prod);
+  if (convFactor > 1) {
+    DB._d[r.code].convFactor = convFactor;
+    DB.save();
+  }
+
+  // Update result with converted price
+  r.newCost = actualCost;
   r.prod = { id:prod.id, kiotvietId:prod.id, kiotvietName:prod.name, kiotvietCode:prod.barCode||prod.code||'', kiotvietCategory:prod.categoryName||'', basePrice:prod.basePrice };
   r.oldSell = prod.basePrice||0;
   r.oldCost = (prod.inventories&&prod.inventories[0]) ? prod.inventories[0].cost : 0;
   r.branchId = (prod.inventories&&prod.inventories[0]) ? prod.inventories[0].branchId : null;
-  r.newSell = calcSell(r.newCost, prod.name, prod.categoryName, r.oldSell);
+  r.newSell = calcSell(actualCost, prod.name, prod.categoryName, r.oldSell);
   r.src = 'approved';
   r.confirmed = true;
 
